@@ -129,7 +129,7 @@ coverage-json: $(BUILD)/coverage.profdata
 
 coverage-html: $(BUILD)/coverage.profdata
 	@mkdir -p $(BUILD)/coverage-html
-	@$(LLVMCOV) show $(RUNNER) -instr-profile=$@ --format=html \
+	@$(LLVMCOV) show $(RUNNER) -instr-profile=$(BUILD)/coverage.profdata --format=html \
 	    --output-dir=$(BUILD)/coverage-html $(COVERAGE_SOURCES)
 	@echo "HTML 报告: $(BUILD)/coverage-html/index.html"
 
