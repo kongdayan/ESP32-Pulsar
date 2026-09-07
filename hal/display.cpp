@@ -1,11 +1,13 @@
 #include "display.h"
+
 #include <Arduino.h>
 #include <esp_display_panel.hpp>
 
-using namespace esp_panel::drivers;
+#include "app_config.h"
+#include "display_rotation.h"
+#include "power_mgmt.h"
 
-#define TFT_SPI_FREQ_HZ (50 * 1000 * 1000)
-#define SCREEN_IDLE_TIMEOUT_MS (30 * 1000UL)
+using namespace esp_panel::drivers;
 
 static lv_color_t        *disp_draw_buf;
 static lv_disp_draw_buf_t draw_buf;
@@ -14,8 +16,9 @@ static lv_indev_t        *indev_touchpad;
 static BacklightPWM_LEDC *backlight = nullptr;
 static LCD               *lcd       = nullptr;
 static Touch             *touch     = nullptr;
-static uint32_t           last_touch_ms = 0;
-static bool               screen_on = true;
+
+/* 息屏/唤醒决策全部在 core/power_mgmt.c，这里只做硬件落地 */
+static power_state_t      power;
 
 static void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
 {
@@ -34,7 +37,7 @@ IRAM_ATTR bool onDrawBitmapFinishCallback(void *user_data)
 }
 
 #if TOUCH_PIN_NUM_INT >= 0
-IRAM_ATTR bool onTouchInterruptCallback(void *user_data)
+IRAM_ATTR bool onTouchInterruptCallback(void *)
 {
     return false;
 }
@@ -42,31 +45,25 @@ IRAM_ATTR bool onTouchInterruptCallback(void *user_data)
 
 void setRotation(uint8_t rot)
 {
-    if (rot > 3 || lcd == nullptr || touch == nullptr)
+    disp_rotation_t mapping;
+    if (!disp_rotation_resolve(rot, &mapping) || lcd == nullptr || touch == nullptr) {
         return;
-
-    bool swap, mirX, mirY;
-    switch (rot) {
-    case 1: swap = true;  mirX = true;  mirY = false; break;
-    case 2: swap = false; mirX = true;  mirY = true;  break;
-    case 3: swap = true;  mirX = false; mirY = true;  break;
-    default: swap = false; mirX = false; mirY = false; break;
     }
-    lcd->swapXY(swap);   lcd->mirrorX(mirX);   lcd->mirrorY(mirY);
-    touch->swapXY(swap); touch->mirrorX(mirX); touch->mirrorY(mirY);
+
+    lcd->swapXY(mapping.swap_xy);   lcd->mirrorX(mapping.mirror_x);   lcd->mirrorY(mapping.mirror_y);
+    touch->swapXY(mapping.swap_xy); touch->mirrorX(mapping.mirror_x); touch->mirrorY(mapping.mirror_y);
 }
 
 void screen_switch(bool on)
 {
     if (backlight == nullptr) return;
+
     if (on) {
         backlight->on();
-        screen_on = true;
-        last_touch_ms = millis();
     } else {
         backlight->off();
-        screen_on = false;
     }
+    (void)power_set_screen_on(&power, on, millis());
 }
 
 void set_brightness(uint8_t bri)
@@ -77,12 +74,8 @@ void set_brightness(uint8_t bri)
 
 void display_power_tick(void)
 {
-    if (backlight == nullptr || !screen_on) return;
-
-    uint32_t now = millis();
-    if (now - last_touch_ms >= SCREEN_IDLE_TIMEOUT_MS) {
-        screen_switch(false);
-    }
+    if (backlight == nullptr) return;
+    if (power_tick(&power, millis())) screen_switch(false);
 }
 
 static void touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data)
@@ -96,8 +89,8 @@ static void touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data)
             data->point.x = point.x;
             data->point.y = point.y;
             data->state = LV_INDEV_STATE_PRESSED;
-            last_touch_ms = millis();
-            if (!screen_on) screen_switch(true);
+
+            if (power_notify_touch(&power, millis())) screen_switch(true);
         }
     }
 }
@@ -123,10 +116,10 @@ void display_init()
     BusI2C *touch_bus = new BusI2C(
         TOUCH_PIN_NUM_I2C_SCL, TOUCH_PIN_NUM_I2C_SDA,
         (BusI2C::ControlPanelFullConfig)ESP_PANEL_TOUCH_I2C_CONTROL_PANEL_CONFIG(CST816S));
-    touch_bus->configI2C_FreqHz(400000);
+    touch_bus->configI2C_FreqHz(APP_TOUCH_I2C_FREQ_HZ);
 
     touch = new TouchCST816S(touch_bus, SCREEN_RES_HOR, SCREEN_RES_VER,
-                              TOUCH_PIN_NUM_RST, TOUCH_PIN_NUM_INT);
+                             TOUCH_PIN_NUM_RST, TOUCH_PIN_NUM_INT);
     touch->begin();
 #if TOUCH_PIN_NUM_INT >= 0
     touch->attachInterruptCallback(onTouchInterruptCallback, nullptr);
@@ -134,24 +127,24 @@ void display_init()
 
     BusQSPI *panel_bus = new BusQSPI(
         TFT_CS, TFT_SCK, TFT_SDA0, TFT_SDA1, TFT_SDA2, TFT_SDA3);
-    panel_bus->configQSPI_FreqHz(TFT_SPI_FREQ_HZ);
+    panel_bus->configQSPI_FreqHz(APP_QSPI_FREQ_HZ);
 
-    lcd = new LCD_ST77916(panel_bus, SCREEN_RES_HOR, SCREEN_RES_VER, 16, TFT_RST);
+    lcd = new LCD_ST77916(panel_bus, SCREEN_RES_HOR, SCREEN_RES_VER, APP_COLOR_DEPTH_BITS, TFT_RST);
     lcd->begin();
     lcd->invertColor(true);
     lcd->setDisplayOnOff(true);
 
     backlight->on();
-    backlight->setBrightness(100);
-    screen_on = true;
-    last_touch_ms = millis();
+    backlight->setBrightness(APP_BACKLIGHT_BRIGHTNESS);
+    power_state_init(&power, millis(), APP_SCREEN_IDLE_TIMEOUT_MS);
 
-    const size_t lv_cache_rows = 72;
-    disp_draw_buf = static_cast<lv_color_t *>(heap_caps_malloc(
-        lv_cache_rows * SCREEN_RES_HOR * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    const size_t cache_bytes = (size_t)APP_LV_DRAW_CACHE_ROWS * SCREEN_RES_HOR * APP_BYTES_PER_PIXEL;
+    disp_draw_buf = static_cast<lv_color_t *>(
+        heap_caps_malloc(cache_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 
     lv_init();
-    lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL, SCREEN_RES_HOR * lv_cache_rows);
+    lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL,
+                          SCREEN_RES_HOR * (size_t)APP_LV_DRAW_CACHE_ROWS);
 
     lv_disp_drv_init(&disp_drv);
     disp_drv.hor_res   = SCREEN_RES_HOR;

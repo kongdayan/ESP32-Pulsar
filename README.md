@@ -46,22 +46,46 @@ ST77916_LVGL_DEMO/
 ├── CMakeLists.txt               # Optional ESP-IDF/CMake project metadata
 ├── AGENTS.md                    # Coding-agent project instructions
 │
+├── core/                        # Hardware-free logic (unit-testable, no LVGL)
+│   ├── app_config.h             # Global constants: screen size, timings, paths, theme
+│   ├── nav_map.c/.h             # Screen navigation topology (left/right → target + anim)
+│   ├── ui_math.h/.c             # Angles, clamping, percent mapping
+│   ├── ui_theme.c/.h            # Dark/light palette tables
+│   ├── power_mgmt.c/.h          # Idle-timeout / day-night backlight policy
+│   ├── display_rotation.c/.h    # Panel rotation & touch remapping
+│   ├── hexball.c/.h             # Hex-Ball physics, scoring, drag-rotate
+│   ├── cube3d.c/.h              # 3D cube projection, hit zones, inertia
+│   ├── watchface.c/.h           # Dot-matrix glyphs, percent/battery formatting
+│   └── video_source.c/.h        # TF-card RGB565 file reader (mockable)
+│
+├── common/
+│   └── ui_screen.c/.h           # Shared LVGL screen scaffolding (lazy create, nav wiring,
+│                                #   widget factories, timer lifecycle)
+│
 ├── hal/
 │   ├── display.cpp              # ST77916 + CST816S + LEDC backlight driver, LVGL init
 │   ├── display.h
-│   └── pincfg.h                 # GPIO pin definitions
+│   ├── sd_card.cpp/.h           # SD_MMC mount at /sdcard
+│   └── pincfg.h                 # GPIO pin definitions (and only GPIO pins)
 │
-├── screens/
-│   ├── screen_dashboard.c/.h    # Dashboard screen
-│   ├── screen_info.c/.h         # Info/settings screen
-│   ├── screen_image.c/.h        # Image screen
-│   ├── screen_about.c/.h        # About screen
-│   └── screen_agent.c/.h        # Hex-Ball game screen
+├── screens/                     # One .c/.h pair per screen, views only
+│   ├── screen_dashboard.c/.h    ├── screen_info.c/.h
+│   ├── screen_image.c/.h        ├── screen_video.c/.h
+│   ├── screen_about.c/.h        ├── screen_agent.c/.h   (Hex-Ball)
+│   ├── screen_3dmodel.c/.h      ├── screen_codex_usage.c/.h
+│   └── *_layout.h               # per-screen geometry / colour / text constants
 │
-├── ui/
-│   ├── ui.c / ui.h              # Theme init, lazy screen loading, shared declarations
+├── ui/                          # SquareLine-generated layer — avoid hand edits
+│   ├── ui.c / ui.h              # Theme init, startup screen, shared declarations
 │   ├── ui_helpers.c / .h        # Shared LVGL helper functions
 │   └── ui_img_*.c               # Embedded image assets
+│
+├── tests/                       # Host-side unit tests (no hardware, no flashing)
+│   ├── Makefile                 # make -C tests test | coverage | check-coverage
+│   ├── unit/                    # pure-logic tests (core/, common/)
+│   ├── lvgl/                    # real LVGL: rendering, nav, interaction tests
+│   ├── support/                 # fakes for hal/, Arduino, heap_caps + virtual display/touch
+│   └── reference/               # verbatim pre-refactor maths, used for differential tests
 │
 ├── assets/                      # Source image assets
 ├── cache/                       # Generated image thumbnails/cache
@@ -173,6 +197,32 @@ esptool.py --chip esp32s3 --port /dev/ttyUSB0 erase_flash
 2. Select board: **ESP32S3 Dev Module**.
 3. Set **USB CDC On Boot** → **Enabled**.
 4. Click **Upload**.
+
+---
+
+## Unit Tests (host-side, no hardware)
+
+The pure logic (`core/`), the shared screen scaffolding (`common/`) and every screen
+are exercised on the host with a real LVGL build — a 360×360 virtual framebuffer,
+a scripted touch device and fakes for `hal/`, `Arduino` and `heap_caps`.
+
+```bash
+pio run                 # once, so .pio/libdeps/*/lvgl exists
+make -C tests test             # run all unit + LVGL tests
+make -C tests coverage         # line / function / branch report
+make -C tests coverage-html    # browsable report in tests/build/coverage-html
+make -C tests check-coverage   # exit non-zero if line coverage < 90% (CI gate)
+```
+
+Run a subset with `make -C tests test RUN=video` (maps to the test-name filter),
+and see [`tests/README.md`](tests/README.md) for what is mocked and what is
+deliberately left untested.
+
+Current status: **99.5% line / 100% function coverage** over
+`core/ + common/ + screens/ + ui/ui.c + ui/ui_helpers.c + main.cpp`.
+`hal/display.cpp` and `hal/sd_card.cpp` talk to QSPI/I²C/SDMMC registers and are
+covered on-device instead (their decision logic was extracted into `core/power_mgmt`
+and `core/display_rotation`, both at 100%).
 
 ---
 

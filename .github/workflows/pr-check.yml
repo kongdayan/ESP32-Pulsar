@@ -27,7 +27,74 @@ jobs:
             --suppress=unmatchedSuppression \
             --error-exitcode=1 \
             --quiet \
-            hal/ screens/ main.cpp
+            hal/ screens/ core/ common/ main.cpp
+
+  # ------------------------------------------------------------------ #
+  # Job 1b: Host-side unit tests + coverage gate (no hardware needed)   #
+  # ------------------------------------------------------------------ #
+  unit-tests:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install clang / llvm profiling tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Install firmware dependencies (provides LVGL sources)
+        run: pio run
+
+      - name: Run unit tests
+        run: make -C tests test
+
+      - name: Enforce coverage threshold (lines >= 90%)
+        run: make -C tests check-coverage MIN_LINE_COVERAGE=90
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          make -C tests coverage-html >/dev/null 2>&1 || true
+          if [ -f tests/build/coverage.json ]; then
+            python3 tests/tools/coverage_summary.py tests/build/coverage.json "$MIN_LINE" \
+              --markdown coverage.md || true
+            [ -f coverage.md ] && cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '覆盖率报告未生成（`make -C tests check-coverage` 失败，请查看上方日志）\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          MIN_LINE: "90"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-coverage
+          path: |
+            tests/build/coverage-html
+            tests/build/coverage.json
+          retention-days: 14
 
   # ------------------------------------------------------------------ #
   # Job 2: Secret / credential detection with Gitleaks                  #
