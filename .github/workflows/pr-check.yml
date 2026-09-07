@@ -74,11 +74,17 @@ jobs:
       - name: Publish coverage summary
         if: always()
         run: |
-          mkdir -p coverage-out
           make -C tests coverage-html >/dev/null 2>&1 || true
-          python3 tests/tools/coverage_summary.py tests/build/coverage.json 90 \
-            --markdown coverage-out/coverage.md || true
-          cat coverage-out/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f tests/build/coverage.json ]; then
+            python3 tests/tools/coverage_summary.py tests/build/coverage.json "$MIN_LINE" \
+              --markdown coverage.md || true
+            [ -f coverage.md ] && cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '覆盖率报告未生成（`make -C tests check-coverage` 失败，请查看上方日志）\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          MIN_LINE: "90"
 
       - name: Upload coverage report
         if: always()

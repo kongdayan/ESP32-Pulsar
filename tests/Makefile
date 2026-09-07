@@ -17,13 +17,35 @@ ifeq ($(LVGL_SRC),)
 $(error 找不到 LVGL 源码，请先在项目根目录执行 `pio run` 拉取依赖)
 endif
 
-CC          ?= clang
-CXX         ?= clang++
+# make 自带 CC=cc / CXX=g++，用 ?= 覆盖不了；只有用户显式传入时才尊重其选择。
+# 覆盖率插桩用的是 LLVM 的 -fprofile-instr-generate，GCC 不认，所以必须 clang。
+CC  := $(if $(filter-out default,$(origin CC)),$(CC),clang)
+CXX := $(if $(filter-out default,$(origin CXX)),$(CXX),clang++)
 
-# macOS 上 llvm 工具要通过 xcrun 找；Linux CI 直接用 PATH 里的 llvm-profdata/llvm-cov
-XCRUN      := $(shell command -v xcrun >/dev/null 2>&1 && echo xcrun)
-PROFDATA    = $(XCRUN) llvm-profdata
-LLVMCOV     = $(XCRUN) llvm-cov
+ifeq ($(shell command -v $(CC) >/dev/null 2>&1 && echo yes),)
+$(error 找不到编译器 `$(CC)`：覆盖率插桩需要 clang（macOS 装 Xcode CLT，Linux `apt install clang llvm`），或显式 make CC=...)
+endif
+
+# macOS 上 llvm 工具要通过 xcrun 找；Linux 直接用 PATH 里的 llvm-profdata / llvm-cov（含带版本号的包名）
+XCRUN := $(shell command -v xcrun >/dev/null 2>&1 && echo xcrun)
+
+LLVM_TOOL_NAMES := llvm-profdata llvm-profdata-21 llvm-profdata-20 llvm-profdata-19 llvm-profdata-18 llvm-profdata-17 llvm-profdata-16
+LLVM_COV_NAMES  := llvm-cov llvm-cov-21 llvm-cov-20 llvm-cov-19 llvm-cov-18 llvm-cov-17 llvm-cov-16
+find_first = $(firstword $(foreach c,$(1),$(if $(shell command -v $(c) 2>/dev/null),$(c))))
+
+ifeq ($(XCRUN),xcrun)
+PROFDATA := xcrun llvm-profdata
+LLVMCOV  := xcrun llvm-cov
+else
+PROFDATA := $(call find_first,$(LLVM_TOOL_NAMES))
+LLVMCOV  := $(call find_first,$(LLVM_COV_NAMES))
+ifeq ($(PROFDATA),)
+$(error 找不到 llvm-profdata：Linux 请 `apt install clang llvm`（或 brew install llvm）)
+endif
+ifeq ($(LLVMCOV),)
+$(error 找不到 llvm-cov：Linux 请 `apt install clang llvm`（或 brew install llvm）)
+endif
+endif
 COV_FLAGS   := -fprofile-instr-generate -fcoverage-mapping
 COMMON_WARN := -Wall -Wextra -Wshadow -Wundef -Wpointer-arith -Wcast-align -Wwrite-strings \
                -Wmissing-prototypes -Wstrict-prototypes -Wno-unused-parameter \
