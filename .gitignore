@@ -9,3 +9,12 @@ build/
 
 # macOS
 .DS_Store
+
+# TF 卡运行时素材（由 ffmpeg 从视频转换生成，体积大且不进版本库）
+# 见 AGENTS.md「视频素材准备」：video.rgb ≈ 30MB，badminton.mp4 是它的源片
+*.rgb
+video.rgb
+badminton.mp4
+
+# 主机侧单元测试的构建产物
+tests/build/
