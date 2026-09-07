@@ -1,50 +1,40 @@
 #include "ui.h"
+#include "ui_screen.h"
+
 #include <math.h>
-#include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
 
-#define CURRENT_PCT   27
-#define WEEKLY_PCT    73
-#define BATTERY_PCT  100
+#include "app_config.h"
+#include "codex_usage_layout.h"
+#include "ui_math.h"
+#include "ui_theme.h"
+#include "watchface.h"
 
-#define CX 180
-#define CY 180
-#define PI_F 3.14159265f
-#define PROGRESS_DOTS 25
-#define PROGRESS_SPACING 11
-
-static lv_obj_t *scr = NULL;
+static lv_obj_t *scr   = NULL;
 static lv_obj_t *panel = NULL;
-static bool light_mode = false;
+static ui_theme_mode_t theme = UI_THEME_DARK;
 
-static uint32_t color_bg(void) { return light_mode ? 0xF8FBFF : 0x02050A; }
-static uint32_t color_ring(void) { return light_mode ? 0xD8E8FA : 0x0B254D; }
-static uint32_t color_tick(void) { return light_mode ? 0x7CAEF6 : 0x1F7AFF; }
-static uint32_t color_tick_hot(void) { return light_mode ? 0x1467F2 : 0x1684FF; }
-static uint32_t color_text(void) { return light_mode ? 0x061B4D : 0xFFFFFF; }
-static uint32_t color_reset(void) { return light_mode ? 0x16264C : 0xFFFFFF; }
-static uint32_t color_blue(void) { return light_mode ? 0x075FF0 : 0x1E9BFF; }
-static uint32_t color_blue_dim(void) { return light_mode ? 0xD8E7F8 : 0x17446D; }
-static uint32_t color_green(void) { return light_mode ? 0x2BA70E : 0x70F52A; }
-static uint32_t color_green_dim(void) { return light_mode ? 0xDCEED5 : 0x315C43; }
+static uint32_t role_color(ui_color_role_t role)
+{
+    return ui_theme_color(theme, role);
+}
 
 static void on_gesture(lv_event_t *e)
 {
-    if (lv_event_get_code(e) != LV_EVENT_GESTURE) return;
-    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
-    lv_indev_wait_release(lv_indev_get_act());
+    const lv_dir_t raw = ui_nav_raw_gesture(e);
+    if (raw == LV_DIR_NONE) return;
 
-    if (dir == LV_DIR_TOP || dir == LV_DIR_BOTTOM) {
-        light_mode = !light_mode;
-        if (panel) lv_obj_invalidate(panel);
+    /* 上下滑动：切换深浅色主题 */
+    if (raw == LV_DIR_TOP || raw == LV_DIR_BOTTOM) {
+        theme = ui_theme_toggle(theme);
+        if (panel != NULL) lv_obj_invalidate(panel);
         return;
     }
 
-    if (dir == LV_DIR_LEFT || dir == LV_DIR_RIGHT)
-        _ui_screen_change(screen_about_get_ptr(),
-                          LV_SCR_LOAD_ANIM_NONE, 0, 0, screen_about_init);
+    (void)ui_nav_go(NAV_SCREEN_CODEX_USAGE, ui_nav_dir_from_lv(raw));
 }
+
+/* ── 基础绘制 ─────────────────────────────────────────────────────────────── */
 
 static void draw_dot(lv_draw_ctx_t *dc, int x, int y, int r, uint32_t color, lv_opa_t opa)
 {
@@ -53,7 +43,7 @@ static void draw_dot(lv_draw_ctx_t *dc, int x, int y, int r, uint32_t color, lv_
     dsc.radius = LV_RADIUS_CIRCLE;
     dsc.bg_color = lv_color_hex(color);
     dsc.bg_opa = opa;
-    lv_area_t area = { x - r, y - r, x + r, y + r };
+    const lv_area_t area = { x - r, y - r, x + r, y + r };
     lv_draw_rect(dc, &dsc, &area);
 }
 
@@ -67,8 +57,8 @@ static void draw_line(lv_draw_ctx_t *dc, int x1, int y1, int x2, int y2, int w,
     dsc.width = w;
     dsc.round_start = 1;
     dsc.round_end = 1;
-    lv_point_t p1 = { x1, y1 };
-    lv_point_t p2 = { x2, y2 };
+    const lv_point_t p1 = { x1, y1 };
+    const lv_point_t p2 = { x2, y2 };
     lv_draw_line(dc, &dsc, &p1, &p2);
 }
 
@@ -80,294 +70,224 @@ static void draw_rect(lv_draw_ctx_t *dc, int x1, int y1, int x2, int y2,
     dsc.radius = radius;
     dsc.bg_color = lv_color_hex(color);
     dsc.bg_opa = opa;
-    lv_area_t area = { x1, y1, x2, y2 };
+    const lv_area_t area = { x1, y1, x2, y2 };
     lv_draw_rect(dc, &dsc, &area);
 }
 
-static const uint8_t *glyph_for(char c)
-{
-    static const uint8_t space[7] = { 0, 0, 0, 0, 0, 0, 0 };
-    static const uint8_t pct[7] = { 0x19, 0x1A, 0x04, 0x08, 0x13, 0x13, 0x00 };
-    static const uint8_t colon[7] = { 0x00, 0x04, 0x04, 0x00, 0x04, 0x04, 0x00 };
-    static const uint8_t gt[7] = { 0x10, 0x08, 0x04, 0x02, 0x04, 0x08, 0x10 };
-    static const uint8_t under[7] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F };
-    static const uint8_t glyphs[][7] = {
-        { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E }, /* 0 */
-        { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E }, /* 1 */
-        { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F }, /* 2 */
-        { 0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E }, /* 3 */
-        { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 }, /* 4 */
-        { 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E }, /* 5 */
-        { 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E }, /* 6 */
-        { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 }, /* 7 */
-        { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E }, /* 8 */
-        { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C }, /* 9 */
-        { 0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 }, /* A */
-        { 0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E }, /* B */
-        { 0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E }, /* C */
-        { 0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E }, /* D */
-        { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F }, /* E */
-        { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 }, /* F */
-        { 0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F }, /* G */
-        { 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 }, /* H */
-        { 0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E }, /* I */
-        { 0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0C }, /* J */
-        { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 }, /* K */
-        { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F }, /* L */
-        { 0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11 }, /* M */
-        { 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 }, /* N */
-        { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E }, /* O */
-        { 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10 }, /* P */
-        { 0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D }, /* Q */
-        { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 }, /* R */
-        { 0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E }, /* S */
-        { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 }, /* T */
-        { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E }, /* U */
-        { 0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04 }, /* V */
-        { 0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11 }, /* W */
-        { 0x11, 0x0A, 0x04, 0x04, 0x04, 0x0A, 0x11 }, /* X */
-        { 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04, 0x04 }, /* Y */
-        { 0x1F, 0x02, 0x04, 0x04, 0x08, 0x10, 0x1F }, /* Z */
-    };
 
-    if (c == ' ') return space;
-    if (c == '%') return pct;
-    if (c == ':') return colon;
-    if (c == '>') return gt;
-    if (c == '_') return under;
-    if (c >= '0' && c <= '9') return glyphs[c - '0'];
-    if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-    if (c >= 'A' && c <= 'Z') return glyphs[10 + c - 'A'];
-    return space;
-}
+/* ── 点阵文本 ─────────────────────────────────────────────────────────────── */
 
 static void draw_dot_text(lv_draw_ctx_t *dc, const char *text, int x, int y,
                           int step, int r, uint32_t color, lv_opa_t opa)
 {
-    while (*text) {
-        const uint8_t *g = glyph_for(*text++);
-        for (int row = 0; row < 7; row++) {
-            for (int col = 0; col < 5; col++) {
-                if (g[row] & (1 << (4 - col))) {
+    for (const char *p = text; *p != '\0'; p++) {
+        const uint8_t *glyph = wf_glyph_for(*p);
+
+        for (int row = 0; row < WF_GLYPH_ROWS; row++) {
+            for (int col = 0; col < WF_GLYPH_COLS; col++) {
+                if (wf_glyph_pixel(glyph, row, col)) {
                     draw_dot(dc, x + col * step, y + row * step, r, color, opa);
                 }
             }
         }
-        x += 6 * step;
+        x += wf_glyph_advance(step);
     }
-}
-
-static int dot_text_width(const char *text, int step)
-{
-    int len = (int)strlen(text);
-    return len > 0 ? len * 6 * step - step : 0;
-}
-
-static void draw_right_dot_text(lv_draw_ctx_t *dc, const char *text, int right_x, int y,
-                                int step, int r, uint32_t color, lv_opa_t opa)
-{
-    draw_dot_text(dc, text, right_x - dot_text_width(text, step), y, step, r, color, opa);
 }
 
 static void draw_right_percent(lv_draw_ctx_t *dc, int pct, int right_x, int y,
                                uint32_t color, lv_opa_t opa)
 {
-    char digits[5];
-    snprintf(digits, sizeof(digits), "%d", pct);
+    char digits[WF_DIGIT_BUFFER];
+    snprintf(digits, sizeof(digits), WF_DIGIT_TEXT_FMT, pct);
 
-    int digit_step = 4;
-    int pct_step = 3;
-    int gap = 4;
-    int digits_w = dot_text_width(digits, digit_step);
-    int pct_w = dot_text_width("%", pct_step);
-    int x = right_x - digits_w - gap - pct_w;
+    const int digits_w = wf_dot_text_width(digits, WF_PERCENT_DIGIT_STEP);
+    const int pct_w = wf_dot_text_width(WF_TEXT_PERCENT, WF_PERCENT_SIGN_STEP);
+    const int x = right_x - digits_w - WF_PERCENT_GAP - pct_w;
 
-    draw_dot_text(dc, digits, x, y, digit_step, 1, color, opa);
-    draw_dot_text(dc, "%", x + digits_w + gap, y + 5, pct_step, 1, color, opa);
+    draw_dot_text(dc, digits, x, y, WF_PERCENT_DIGIT_STEP, WF_PERCENT_DOT_R, color, opa);
+    draw_dot_text(dc, WF_TEXT_PERCENT, x + digits_w + WF_PERCENT_GAP, y + WF_PERCENT_SIGN_Y_OFF,
+                  WF_PERCENT_SIGN_STEP, WF_PERCENT_DOT_R, color, opa);
 }
 
-static void draw_centered_dot_text(lv_draw_ctx_t *dc, const char *text, int y,
-                                   int step, int r, uint32_t color, lv_opa_t opa)
+static void draw_dotted_hline(lv_draw_ctx_t *dc, int x1, int x2, int y,
+                              uint32_t color, lv_opa_t opa)
 {
-    int w = dot_text_width(text, step);
-    draw_dot_text(dc, text, (360 - w) / 2, y, step, r, color, opa);
-}
-
-static void draw_dotted_hline(lv_draw_ctx_t *dc, int x1, int x2, int y, uint32_t color, lv_opa_t opa)
-{
-    for (int x = x1; x <= x2; x += 10) draw_dot(dc, x, y, 1, color, opa);
-}
-
-static void draw_progress_dots(lv_draw_ctx_t *dc, int x, int y, int count, int active,
-                               int rows, uint32_t active_color, uint32_t inactive_color)
-{
-    for (int row = 0; row < rows; row++) {
-        for (int i = 0; i < count; i++) {
-            uint32_t color = i < active ? active_color : inactive_color;
-            lv_opa_t opa = i < active ? LV_OPA_COVER : LV_OPA_60;
-            draw_dot(dc, x + i * PROGRESS_SPACING, y + row * PROGRESS_SPACING, 2, color, opa);
-        }
+    for (int x = x1; x <= x2; x += WF_DIVIDER_STEP) {
+        draw_dot(dc, x, y, WF_DIVIDER_DOT_R, color, opa);
     }
+}
+
+/* ── 表盘装饰 ─────────────────────────────────────────────────────────────── */
+
+static lv_opa_t tick_opa(void)
+{
+    return ui_theme_is_light(theme) ? WF_TICK_OPA_LIGHT : WF_TICK_OPA_DARK;
+}
+
+static lv_opa_t divider_opa(void)
+{
+    return ui_theme_is_light(theme) ? WF_DIVIDER_OPA_LIGHT : WF_DIVIDER_OPA_DARK;
 }
 
 static void draw_outer_ticks(lv_draw_ctx_t *dc)
 {
-    for (int i = 0; i < 148; i++) {
-        float deg = (float)i * 360.0f / 148.0f;
-        float rad = deg * PI_F / 180.0f;
-        int x = CX + (int)(171.0f * cosf(rad));
-        int y = CY + (int)(171.0f * sinf(rad));
-        draw_dot(dc, x, y, 1, color_tick(), light_mode ? LV_OPA_50 : LV_OPA_70);
+    const uint32_t tick = role_color(UI_ROLE_TICK);
+    const uint32_t hot = role_color(UI_ROLE_TICK_HOT);
+
+    for (int i = 0; i < WF_TICK_COUNT; i++) {
+        const float rad = ui_deg_to_rad((float)i * UI_DEG_FULL / (float)WF_TICK_COUNT);
+        const int x = APP_SCREEN_CENTER_X + (int)(WF_TICK_RADIUS * cosf(rad));
+        const int y = APP_SCREEN_CENTER_Y + (int)(WF_TICK_RADIUS * sinf(rad));
+        draw_dot(dc, x, y, WF_TICK_DOT_R, tick, tick_opa());
     }
 
-    draw_line(dc, 178, 5, 182, 5, 5, color_tick_hot(), LV_OPA_COVER);
-    draw_line(dc, 178, 355, 182, 355, 5, color_tick_hot(), LV_OPA_COVER);
-    draw_line(dc, 5, 180, 9, 180, 5, color_tick_hot(), LV_OPA_COVER);
-    draw_line(dc, 351, 180, 355, 180, 5, color_tick_hot(), LV_OPA_COVER);
-}
-
-static void draw_label_text(lv_draw_ctx_t *dc, const char *text, int x, int y,
-                            int w, int h, const lv_font_t *font, uint32_t color)
-{
-    lv_draw_label_dsc_t dsc;
-    lv_draw_label_dsc_init(&dsc);
-    dsc.color = lv_color_hex(color);
-    dsc.opa = LV_OPA_COVER;
-    dsc.font = font;
-    dsc.align = LV_TEXT_ALIGN_CENTER;
-    lv_area_t area = { x, y, x + w - 1, y + h - 1 };
-    lv_draw_label(dc, &dsc, &area, text, NULL);
-}
-
-static void draw_clock_icon(lv_draw_ctx_t *dc, int x, int y)
-{
-    lv_point_t center = { x, y };
-    lv_draw_arc_dsc_t dsc;
-    lv_draw_arc_dsc_init(&dsc);
-    dsc.color = lv_color_hex(color_reset());
-    dsc.opa = LV_OPA_COVER;
-    dsc.width = 2;
-    dsc.rounded = 1;
-    lv_draw_arc(dc, &dsc, &center, 7, 0, 360);
-    draw_line(dc, x, y, x, y - 5, 2, color_reset(), LV_OPA_COVER);
-    draw_line(dc, x, y, x + 4, y + 2, 2, color_reset(), LV_OPA_COVER);
-}
-
-static void draw_centered_reset(lv_draw_ctx_t *dc, const char *text, int y)
-{
-    draw_clock_icon(dc, 58, y + 9);
-
-    lv_draw_label_dsc_t dsc;
-    lv_draw_label_dsc_init(&dsc);
-    dsc.color = lv_color_hex(color_reset());
-    dsc.opa = LV_OPA_COVER;
-    dsc.font = &lv_font_montserrat_16;
-    dsc.align = LV_TEXT_ALIGN_LEFT;
-    lv_area_t area = { 73, y, 315, y + 20 };
-    lv_draw_label(dc, &dsc, &area, text, NULL);
+    draw_line(dc, WF_HOT_CENTER - WF_HOT_LINE_HALF, WF_HOT_TOP_Y,
+              WF_HOT_CENTER + WF_HOT_LINE_HALF, WF_HOT_TOP_Y,
+              WF_HOT_LINE_WIDTH, hot, LV_OPA_COVER);
+    draw_line(dc, WF_HOT_CENTER - WF_HOT_LINE_HALF, WF_HOT_BOTTOM_Y,
+              WF_HOT_CENTER + WF_HOT_LINE_HALF, WF_HOT_BOTTOM_Y,
+              WF_HOT_LINE_WIDTH, hot, LV_OPA_COVER);
+    draw_line(dc, WF_HOT_EDGE_NEAR, WF_HOT_SIDE_Y,
+              WF_HOT_EDGE_NEAR + WF_HOT_LINE_LEN, WF_HOT_SIDE_Y,
+              WF_HOT_LINE_WIDTH, hot, LV_OPA_COVER);
+    draw_line(dc, WF_HOT_EDGE_FAR, WF_HOT_SIDE_Y,
+              WF_HOT_EDGE_FAR + WF_HOT_LINE_LEN, WF_HOT_SIDE_Y,
+              WF_HOT_LINE_WIDTH, hot, LV_OPA_COVER);
 }
 
 static void draw_codex_mark(lv_draw_ctx_t *dc)
 {
-    lv_point_t hex[6];
-    for (int i = 0; i < 6; i++) {
-        float rad = (30.0f + i * 60.0f) * PI_F / 180.0f;
-        hex[i].x = 102 + (lv_coord_t)(20.0f * cosf(rad));
-        hex[i].y = 65 + (lv_coord_t)(20.0f * sinf(rad));
+    lv_point_t hex[WF_MARK_SIDES];
+    for (int i = 0; i < WF_MARK_SIDES; i++) {
+        const float rad = ui_deg_to_rad(WF_MARK_START_DEG + (float)i * WF_MARK_STEP_DEG);
+        hex[i].x = WF_MARK_CX + (lv_coord_t)(WF_MARK_RADIUS * cosf(rad));
+        hex[i].y = WF_MARK_CY + (lv_coord_t)(WF_MARK_RADIUS * sinf(rad));
     }
 
     lv_draw_rect_dsc_t fill;
     lv_draw_rect_dsc_init(&fill);
-    fill.bg_color = lv_color_hex(0x0B6CFF);
+    fill.bg_color = lv_color_hex(role_color(UI_ROLE_MARK));
     fill.bg_opa = LV_OPA_COVER;
-    lv_draw_polygon(dc, &fill, hex, 6);
+    lv_draw_polygon(dc, &fill, hex, WF_MARK_SIDES);
 
-    draw_dot(dc, 94, 57, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 98, 61, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 102, 65, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 98, 69, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 94, 73, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 110, 73, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 114, 73, 2, 0xFFFFFF, LV_OPA_COVER);
-    draw_dot(dc, 118, 73, 2, 0xFFFFFF, LV_OPA_COVER);
-}
-
-static void draw_battery(lv_draw_ctx_t *dc)
-{
-    draw_line(dc, 260, 66, 278, 66, 1, 0x1F7AFF, LV_OPA_COVER);
-    draw_line(dc, 260, 79, 278, 79, 1, 0x1F7AFF, LV_OPA_COVER);
-    draw_line(dc, 260, 66, 260, 79, 1, 0x1F7AFF, LV_OPA_COVER);
-    draw_line(dc, 278, 66, 278, 79, 1, 0x1F7AFF, LV_OPA_COVER);
-    draw_line(dc, 280, 70, 283, 70, 1, 0x1F7AFF, LV_OPA_COVER);
-    draw_line(dc, 280, 75, 283, 75, 1, 0x1F7AFF, LV_OPA_COVER);
-
-    int fill = (BATTERY_PCT + 33) / 34;
-    for (int i = 0; i < fill; i++) {
-        draw_rect(dc, 263 + i * 5, 69, 266 + i * 5, 76, 1, 0x70F52A, LV_OPA_COVER);
+    for (int i = 0; i < WF_MARK_DOT_COUNT; i++) {
+        draw_dot(dc, k_wf_mark_dots[i][0], k_wf_mark_dots[i][1], WF_MARK_DOT_R,
+                 role_color(UI_ROLE_ON_MARK), LV_OPA_COVER);
     }
-
-    char buf[6];
-    snprintf(buf, sizeof(buf), "%d%%", BATTERY_PCT);
-    draw_label_text(dc, buf, 256, 84, 34, 12, &lv_font_montserrat_10, 0xFFFFFF);
 }
+
+static void draw_clock_icon(lv_draw_ctx_t *dc, int x, int y)
+{
+    const uint32_t color = role_color(UI_ROLE_RESET);
+
+    lv_point_t center = { x, y };
+    lv_draw_arc_dsc_t dsc;
+    lv_draw_arc_dsc_init(&dsc);
+    dsc.color = lv_color_hex(color);
+    dsc.opa = LV_OPA_COVER;
+    dsc.width = WF_RESET_CLOCK_W;
+    dsc.rounded = 1;
+    lv_draw_arc(dc, &dsc, &center, WF_RESET_CLOCK_R, WF_RING_START_DEG, WF_RING_END_DEG);
+
+    draw_line(dc, x, y, x, y - WF_RESET_HOUR_LEN, WF_RESET_CLOCK_W, color, LV_OPA_COVER);
+    draw_line(dc, x, y, x + WF_RESET_MIN_DX, y + WF_RESET_MIN_DY, WF_RESET_CLOCK_W, color,
+              LV_OPA_COVER);
+}
+
+static void draw_centered_reset(lv_draw_ctx_t *dc, const char *text, int y)
+{
+    draw_clock_icon(dc, WF_RESET_CLOCK_X, y + WF_RESET_CLOCK_Y_OFF);
+
+    lv_draw_label_dsc_t dsc;
+    lv_draw_label_dsc_init(&dsc);
+    dsc.color = lv_color_hex(role_color(UI_ROLE_RESET));
+    dsc.opa = LV_OPA_COVER;
+    dsc.font = &lv_font_montserrat_16;
+    dsc.align = LV_TEXT_ALIGN_LEFT;
+    const lv_area_t area = { WF_RESET_TEXT_X1, y, WF_RESET_TEXT_X2, y + WF_RESET_TEXT_H };
+    lv_draw_label(dc, &dsc, &area, text, NULL);
+}
+
+
+static void draw_progress_dots(lv_draw_ctx_t *dc, int x, int y, int count, int active, int rows,
+                               uint32_t active_color, uint32_t inactive_color)
+{
+    for (int row = 0; row < rows; row++) {
+        for (int i = 0; i < count; i++) {
+            const bool on = (i < active);
+            draw_dot(dc, x + i * WF_PROGRESS_SPACING, y + row * WF_PROGRESS_SPACING,
+                     WF_PROGRESS_DOT_R, on ? active_color : inactive_color,
+                     on ? LV_OPA_COVER : WF_PROGRESS_IDLE_OPA);
+        }
+    }
+}
+
+/* ── 整屏绘制 ─────────────────────────────────────────────────────────────── */
 
 static void on_draw(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_DRAW_POST_BEGIN) return;
     lv_draw_ctx_t *dc = lv_event_get_draw_ctx(e);
 
-    draw_rect(dc, 0, 0, 359, 359, LV_RADIUS_CIRCLE, color_bg(), LV_OPA_COVER);
+    draw_rect(dc, 0, 0, APP_SCREEN_MAX_COORD, APP_SCREEN_MAX_COORD, LV_RADIUS_CIRCLE,
+              role_color(UI_ROLE_BG), LV_OPA_COVER);
 
-    lv_point_t center = { CX, CY };
+    lv_point_t center = { APP_SCREEN_CENTER_X, APP_SCREEN_CENTER_Y };
     lv_draw_arc_dsc_t ring;
     lv_draw_arc_dsc_init(&ring);
-    ring.color = lv_color_hex(color_ring());
+    ring.color = lv_color_hex(role_color(UI_ROLE_RING));
     ring.opa = LV_OPA_COVER;
-    ring.width = 7;
+    ring.width = WF_RING_WIDTH;
     ring.rounded = 1;
-    lv_draw_arc(dc, &ring, &center, 180, 0, 360);
+    lv_draw_arc(dc, &ring, &center, WF_RING_RADIUS, WF_RING_START_DEG, WF_RING_END_DEG);
 
     draw_outer_ticks(dc);
-    draw_dotted_hline(dc, 40, 320, 102, color_tick(), light_mode ? LV_OPA_40 : LV_OPA_70);
-    draw_dotted_hline(dc, 28, 332, 203, color_tick(), light_mode ? LV_OPA_40 : LV_OPA_70);
-    draw_dotted_hline(dc, 82, 292, 292, color_tick(), light_mode ? LV_OPA_40 : LV_OPA_70);
+    draw_dotted_hline(dc, WF_DIVIDER_1_X1, WF_DIVIDER_1_X2, WF_DIVIDER_1_Y,
+                      role_color(UI_ROLE_TICK), divider_opa());
+    draw_dotted_hline(dc, WF_DIVIDER_2_X1, WF_DIVIDER_2_X2, WF_DIVIDER_2_Y,
+                      role_color(UI_ROLE_TICK), divider_opa());
+    draw_dotted_hline(dc, WF_DIVIDER_3_X1, WF_DIVIDER_3_X2, WF_DIVIDER_3_Y,
+                      role_color(UI_ROLE_TICK), divider_opa());
 
     draw_codex_mark(dc);
-    draw_dot_text(dc, "CODEX", 146, 55, 4, 1, color_text(), LV_OPA_COVER);
+    draw_dot_text(dc, WF_TEXT_CODEX, WF_MARK_TEXT_X, WF_MARK_TEXT_Y,
+                  WF_MARK_TEXT_STEP, WF_MARK_TEXT_DOT_R,
+                  role_color(UI_ROLE_TEXT_PRIMARY), LV_OPA_COVER);
 
-    draw_dot_text(dc, "CURRENT", 45, 122, 2, 1, color_blue(), LV_OPA_COVER);
-    draw_right_percent(dc, CURRENT_PCT, 319, 116, color_blue(), LV_OPA_COVER);
-    draw_progress_dots(dc, 48, 156, PROGRESS_DOTS,
-                       (PROGRESS_DOTS * CURRENT_PCT + 50) / 100, 2,
-                       color_blue(), color_blue_dim());
-    draw_centered_reset(dc, "Resets in 21:59", 180);
+    draw_dot_text(dc, WF_TEXT_CURRENT, WF_SECTION_LABEL_X, WF_CURRENT_LABEL_Y,
+                  WF_SECTION_LABEL_STEP, WF_SECTION_DOT_R, role_color(UI_ROLE_BLUE), LV_OPA_COVER);
+    draw_right_percent(dc, WF_CURRENT_PCT, WF_PERCENT_RIGHT_X, WF_CURRENT_PERCENT_Y,
+                       role_color(UI_ROLE_BLUE), LV_OPA_COVER);
+    draw_progress_dots(dc, WF_PROGRESS_X, WF_CURRENT_PROGRESS_Y, WF_PROGRESS_DOTS,
+                       wf_progress_steps(WF_PROGRESS_DOTS, WF_CURRENT_PCT), WF_PROGRESS_ROWS,
+                       role_color(UI_ROLE_BLUE), role_color(UI_ROLE_BLUE_DIM));
+    draw_centered_reset(dc, WF_TEXT_RESET_DAILY, WF_RESET_DAILY_Y);
 
-    draw_dot_text(dc, "WEEKLY", 45, 221, 2, 1, color_green(), LV_OPA_COVER);
-    draw_right_percent(dc, WEEKLY_PCT, 319, 217, color_green(), LV_OPA_COVER);
-    draw_progress_dots(dc, 48, 248, PROGRESS_DOTS,
-                       (PROGRESS_DOTS * WEEKLY_PCT + 50) / 100, 1,
-                       color_green(), color_green_dim());
-    draw_centered_reset(dc, "Resets 16:14 on 18 May", 266);
+    draw_dot_text(dc, WF_TEXT_WEEKLY, WF_SECTION_LABEL_X, WF_WEEKLY_LABEL_Y,
+                  WF_SECTION_LABEL_STEP, WF_SECTION_DOT_R, role_color(UI_ROLE_GREEN), LV_OPA_COVER);
+    draw_right_percent(dc, WF_WEEKLY_PCT, WF_PERCENT_RIGHT_X, WF_WEEKLY_PERCENT_Y,
+                       role_color(UI_ROLE_GREEN), LV_OPA_COVER);
+    draw_progress_dots(dc, WF_PROGRESS_X, WF_WEEKLY_PROGRESS_Y, WF_PROGRESS_DOTS,
+                       wf_progress_steps(WF_PROGRESS_DOTS, WF_WEEKLY_PCT), 1,
+                       role_color(UI_ROLE_GREEN), role_color(UI_ROLE_GREEN_DIM));
+    draw_centered_reset(dc, WF_TEXT_RESET_WEEKLY, WF_RESET_WEEKLY_Y);
 
-    draw_dot(dc, 100, 307, 3, color_green(), LV_OPA_COVER);
-    draw_dot_text(dc, "AGENT ACTIVE", 115, 300, 2, 1, color_green(), LV_OPA_COVER);
+    draw_dot(dc, WF_AGENT_DOT_X, WF_AGENT_DOT_Y, WF_AGENT_DOT_R, role_color(UI_ROLE_GREEN),
+             LV_OPA_COVER);
+    draw_dot_text(dc, WF_TEXT_AGENT, WF_AGENT_TEXT_X, WF_AGENT_TEXT_Y,
+                  WF_AGENT_TEXT_STEP, WF_AGENT_TEXT_DOT_R, role_color(UI_ROLE_GREEN), LV_OPA_COVER);
 }
 
 void screen_codex_usage_init(void)
 {
-    scr = lv_obj_create(NULL);
-    lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(scr, lv_color_hex(color_bg()), LV_PART_MAIN);
+    /* 这屏的手势要自己处理（上下滑 = 切主题），所以不挂通用导航回调，
+     * 且回调必须挂在屏幕根对象上 —— LVGL 的 GESTURE 只会发给冒泡根。 */
+    scr = ui_screen_create_ex(NAV_SCREEN_CODEX_USAGE, false);
+    ui_screen_set_bg(scr, role_color(UI_ROLE_BG));
     lv_obj_add_event_cb(scr, on_gesture, LV_EVENT_ALL, NULL);
 
-    panel = lv_obj_create(scr);
-    lv_obj_set_size(panel, 360, 360);
-    lv_obj_set_pos(panel, 0, 0);
-    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(panel, 0, LV_PART_MAIN);
+    panel = ui_fullscreen_layer_create(scr, true);
     lv_obj_add_event_cb(panel, on_draw, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(panel, on_gesture, LV_EVENT_ALL, NULL);
 }
 
 lv_obj_t **screen_codex_usage_get_ptr(void) { return &scr; }

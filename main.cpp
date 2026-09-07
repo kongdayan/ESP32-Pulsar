@@ -1,13 +1,16 @@
 #include <Arduino.h>
-#include "display.h"
+
 #include <lvgl.h>
-#include "ui.h"
+
+#include "app_config.h"
+#include "display.h"
 #include "sd_card.h"
+#include "ui.h"
 
 void setup()
 {
-  delay(200);
-  Serial.begin(115200);
+  delay(APP_BOOT_DELAY_MS);
+  Serial.begin(APP_SERIAL_BAUD);
   display_init();
   sd_card_init();
   ui_init();
@@ -16,5 +19,6 @@ void setup()
 void loop()
 {
   lv_timer_handler();
-  vTaskDelay(5);
+  display_power_tick();
+  vTaskDelay(APP_MAIN_LOOP_DELAY_MS);
 }
