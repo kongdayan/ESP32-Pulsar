@@ -2,23 +2,25 @@
 """
 pulsar_ble_client.py — 把电脑上的实时数据经 BLE 写入 ESP32-Pulsar。
 
-两个数据源，各写一个 GATT 特征值：
-  1. Codex 用量   ~/.codex/auth.json → GET chatgpt.com/backend-api/codex/usage
-  2. DeepSeek 余额 DEEPSEEK_API_KEY   → GET api.deepseek.com/user/balance
+数据源（每个都压成一行扁平 JSON 写入对应特征值）：
+  · Codex 用量    ~/.codex/auth.json → GET chatgpt.com/backend-api/codex/usage
+  · Claude 用量   Keychain「Claude Code-credentials」→ GET api.anthropic.com/api/oauth/usage
+  · DeepSeek 余额 DEEPSEEK_API_KEY   → GET api.deepseek.com/user/balance
+
+用量类数据共用特征值 0b1e5a11-…，用 JSON 里的 "p" 字段区分 provider
+（0=Codex 1=Claude 2=NVIDIA 3=AMD 4=GLM，见 core/usage_model.h）；余额走 0b1e5a13-…。
 
 用法：
   pip install -r requirements.txt
   python3 pulsar_ble_client.py                 # 循环，每 60s 推一次
   python3 pulsar_ble_client.py --once          # 只推一次
   python3 pulsar_ble_client.py --dry-run       # 只打印 payload，不连 BLE
-  python3 pulsar_ble_client.py --print-usage   # 额外打印 Codex 原始 JSON
-  python3 pulsar_ble_client.py --print-balance # 额外打印 DeepSeek 原始 JSON
+  python3 pulsar_ble_client.py --print-usage --print-claude --print-balance
 
 注意：
-  * auth.json 里是 OAuth 凭据，只在本地读取，绝不要提交或写入固件。
-  * access_token 会过期；Codex CLI 会自动刷新。接口返回 401 时，
-    先在终端跑一次 `codex` 刷新凭据再试。
-  * Codex 用量接口有 Cloudflare 限流，短时间请求过密会 403；脚本会自动退避。
+  · 所有凭据只在本地读取，绝不提交或写入固件。
+  · Codex access_token 会过期，终端跑一次 `codex` 刷新；接口有 Cloudflare 限流（403 自动退避）。
+  · Claude 凭据存在 macOS Keychain，仅 darwin 平台可读；其他平台自动跳过。
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ import datetime as _dt
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import time
 import urllib.error
@@ -42,6 +45,13 @@ USAGE_CHAR_UUID = "0b1e5a11-7e3d-4f1a-9c2b-1a2b3c4d5e60"
 STATUS_CHAR_UUID = "0b1e5a12-7e3d-4f1a-9c2b-1a2b3c4d5e60"
 BALANCE_CHAR_UUID = "0b1e5a13-7e3d-4f1a-9c2b-1a2b3c4d5e60"
 
+# ── 与固件 core/usage_model.h 的 usage_provider_t 对齐 ────────────────────────
+PROVIDER_CODEX = 0
+PROVIDER_CLAUDE = 1
+PROVIDER_NVIDIA = 2
+PROVIDER_AMD = 3
+PROVIDER_GLM = 4
+
 # ── Codex 后端 ────────────────────────────────────────────────────────────────
 USAGE_URL = os.environ.get(
     "PULSAR_USAGE_URL", "https://chatgpt.com/backend-api/codex/usage"
@@ -50,6 +60,12 @@ AUTH_PATH = pathlib.Path(
     os.environ.get("PULSAR_CODEX_AUTH", str(pathlib.Path.home() / ".codex" / "auth.json"))
 )
 
+# ── Claude 后端 ───────────────────────────────────────────────────────────────
+CLAUDE_USAGE_URL = os.environ.get(
+    "PULSAR_CLAUDE_USAGE_URL", "https://api.anthropic.com/api/oauth/usage"
+)
+CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials"
+
 # ── DeepSeek 后端 ─────────────────────────────────────────────────────────────
 DEEPSEEK_BALANCE_URL = os.environ.get(
     "PULSAR_DEEPSEEK_URL", "https://api.deepseek.com/user/balance"
@@ -57,21 +73,11 @@ DEEPSEEK_BALANCE_URL = os.environ.get(
 DEEPSEEK_KEY_ENV = "DEEPSEEK_API_KEY"
 
 HTTP_TIMEOUT_S = 20
+KEYCHAIN_TIMEOUT_S = 10
 
-# ── 与固件 core/usage_model.h 的 usage_plan_t 对齐 ────────────────────────────
 PLAN_IDS = {
-    "free": 1,
-    "go": 2,
-    "plus": 3,
-    "pro": 4,
-    "prolite": 4,
-    "team": 5,
-    "business": 6,
-    "ent26": 6,
-    "enterprise": 6,
-    "edu": 6,
-    "edu_plus": 6,
-    "edu_pro": 6,
+    "free": 1, "go": 2, "plus": 3, "pro": 4, "prolite": 4, "team": 5,
+    "business": 6, "ent26": 6, "enterprise": 6, "edu": 6, "edu_plus": 6, "edu_pro": 6,
 }
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -100,6 +106,27 @@ def _http_get_json(url: str, headers: dict) -> dict:
         raise ApiError(exc.code, body) from exc
     except urllib.error.URLError as exc:
         raise ApiError(0, f"网络错误：{exc.reason}") from exc
+
+
+def _first(d: dict, *keys):
+    for k in keys:
+        if k in d and d[k] is not None:
+            return d[k]
+    return None
+
+
+def _local_label(epoch_s: int) -> str:
+    dt = _dt.datetime.fromtimestamp(epoch_s)
+    return f"{dt:%H:%M} on {dt.day} {MONTHS[dt.month - 1]}"
+
+
+def _iso_epoch(iso: str | None) -> int | None:
+    if not iso:
+        return None
+    try:
+        return int(_dt.datetime.fromisoformat(iso).timestamp())
+    except ValueError:
+        return None
 
 
 # ── Codex ─────────────────────────────────────────────────────────────────────
@@ -133,13 +160,6 @@ def fetch_usage(token: str, account_id: str) -> dict:
     })
 
 
-def _first(d: dict, *keys):
-    for k in keys:
-        if k in d and d[k] is not None:
-            return d[k]
-    return None
-
-
 def _window(rate_limit: dict, *names) -> dict:
     """窗口在不同版本里叫 primary|primary_window，两种都兼容。"""
     for name in names:
@@ -150,7 +170,6 @@ def _window(rate_limit: dict, *names) -> dict:
 
 
 def _reset_epoch(window: dict, now: int) -> int | None:
-    """窗口重置的绝对时刻（epoch 秒）。优先 reset_at，其次由 reset_after_seconds 推算。"""
     reset_at = _first(window, "reset_at", "resets_at", "resetsAt")
     if reset_at:
         return int(reset_at)
@@ -159,7 +178,6 @@ def _reset_epoch(window: dict, now: int) -> int | None:
 
 
 def _reset_in(window: dict, now: int) -> int:
-    """距重置剩余秒数。优先服务端直接给的 reset_after_seconds（避开时钟偏差）。"""
     after = _first(window, "reset_after_seconds", "resetAfterSeconds")
     if after is not None:
         return max(0, int(after))
@@ -167,41 +185,100 @@ def _reset_in(window: dict, now: int) -> int:
     return max(0, epoch - now) if epoch is not None else 0
 
 
-def _local_label(epoch_s: int) -> str:
-    dt = _dt.datetime.fromtimestamp(epoch_s)
-    return f"{dt:%H:%M} on {dt.day} {MONTHS[dt.month - 1]}"
-
-
 def build_payload(usage: dict) -> tuple[bytes, dict]:
-    """把 Codex 响应压成固件认识的扁平 JSON。"""
+    """Codex 响应 → 扁平 JSON。"""
     rate_limit = usage.get("rate_limit") or {}
     primary = _window(rate_limit, "primary", "primary_window")
     secondary = _window(rate_limit, "secondary", "secondary_window")
 
     now = int(time.time())
-    current_pct = int(_first(primary, "used_percent", "usedPercent") or 0)
-    weekly_pct = int(_first(secondary, "used_percent", "usedPercent") or 0)
-
-    current_in = _reset_in(primary, now)
-    weekly_in = _reset_in(secondary, now)
     weekly_epoch = _reset_epoch(secondary, now)
-    weekly_label = _local_label(weekly_epoch) if weekly_epoch is not None else ""
-
     plan_raw = str(_first(rate_limit, "plan_type", "planType")
                    or _first(usage, "plan_type", "planType") or "").lower()
     credits = usage.get("credits") or rate_limit.get("credits") or {}
-    limit_reached = bool(_first(rate_limit, "limit_reached", "rate_limit_reached"))
 
     fields = {
-        "cu": max(0, min(100, current_pct)),
-        "ci": current_in,
-        "wu": max(0, min(100, weekly_pct)),
-        "wi": weekly_in,
-        "wl": weekly_label,
+        "p": PROVIDER_CODEX,
+        "cu": max(0, min(100, int(_first(primary, "used_percent", "usedPercent") or 0))),
+        "ci": _reset_in(primary, now),
+        "wu": max(0, min(100, int(_first(secondary, "used_percent", "usedPercent") or 0))),
+        "wi": _reset_in(secondary, now),
+        "wl": _local_label(weekly_epoch) if weekly_epoch is not None else "",
         "pl": PLAN_IDS.get(plan_raw, 0),
         "cc": 1 if credits.get("has_credits") else 0,
         "un": 1 if credits.get("unlimited") else 0,
-        "rl": 1 if limit_reached else 0,
+        "rl": 1 if _first(rate_limit, "limit_reached", "rate_limit_reached") else 0,
+    }
+    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode(), fields
+
+
+# ── Claude ────────────────────────────────────────────────────────────────────
+
+def load_claude_token() -> str | None:
+    """从 macOS Keychain 读 Claude Code 的 OAuth accessToken（只读，不打印）。"""
+    if sys.platform != "darwin":
+        return None
+    try:
+        out = subprocess.run(
+            ["security", "find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
+            capture_output=True, text=True, timeout=KEYCHAIN_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    try:
+        cred = json.loads(out.stdout)
+    except json.JSONDecodeError:
+        return None
+    return ((cred.get("claudeAiOauth") or {}).get("accessToken")) or None
+
+
+def fetch_claude_usage(token: str) -> dict:
+    return _http_get_json(CLAUDE_USAGE_URL, {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "User-Agent": "pulsar-ble-client/0.1",
+        "anthropic-version": "2023-06-01",
+    })
+
+
+def _claude_window(usage: dict, kind: str, fallback: str) -> dict:
+    """优先用规整的 limits[]（kind=session/weekly_all），退回 five_hour/seven_day。"""
+    for lim in (usage.get("limits") or []):
+        if isinstance(lim, dict) and lim.get("kind") == kind:
+            return lim
+    win = usage.get(fallback)
+    return win if isinstance(win, dict) else {}
+
+
+def build_claude_payload(usage: dict) -> tuple[bytes, dict]:
+    """Claude /api/oauth/usage → 与 Codex 同一套扁平 JSON（p=1）。"""
+    now = int(time.time())
+    session = _claude_window(usage, "session", "five_hour")
+    weekly = _claude_window(usage, "weekly_all", "seven_day")
+
+    def pct(win: dict) -> int:
+        v = float(_first(win, "percent", "utilization") or 0)
+        return max(0, min(100, int(round(v))))
+
+    def resets_in(win: dict) -> int:
+        ep = _iso_epoch(_first(win, "resets_at", "resetsAt"))
+        return max(0, ep - now) if ep is not None else 0
+
+    weekly_epoch = _iso_epoch(_first(weekly, "resets_at", "resetsAt"))
+
+    fields = {
+        "p": PROVIDER_CLAUDE,
+        "cu": pct(session),
+        "ci": resets_in(session),
+        "wu": pct(weekly),
+        "wi": resets_in(weekly),
+        "wl": _local_label(weekly_epoch) if weekly_epoch is not None else "",
+        "pl": 0,
+        "cc": 0,
+        "un": 0,
+        "rl": 0,
     }
     return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode(), fields
 
@@ -225,7 +302,6 @@ def _to_cents(value) -> int:
 
 
 def build_balance_payload(balance: dict) -> tuple[bytes, dict]:
-    """把 DeepSeek /user/balance 响应压成扁平 JSON（金额单位为分）。"""
     infos = balance.get("balance_infos") or []
     info = infos[0] if infos else {}
     fields = {
@@ -240,9 +316,9 @@ def build_balance_payload(balance: dict) -> tuple[bytes, dict]:
 
 # ── 一轮：取数 + 推送 ─────────────────────────────────────────────────────────
 
-def _collect(args, token: str, account_id: str) -> tuple[bytes | None, bytes | None, list[ApiError]]:
-    """取回两个 payload（各自失败互不影响），返回 (usage, balance, errors)。"""
-    usage_payload: bytes | None = None
+def _collect(args, token: str, account_id: str):
+    """取回所有 payload，各源失败互不影响。返回 (usage列表, 余额, errors)。"""
+    usage_payloads: list[tuple[str, bytes]] = []
     balance_payload: bytes | None = None
     errors: list[ApiError] = []
 
@@ -251,11 +327,28 @@ def _collect(args, token: str, account_id: str) -> tuple[bytes | None, bytes | N
             usage = fetch_usage(token, account_id)
             if args.print_usage:
                 print(json.dumps(usage, indent=2, ensure_ascii=False))
-            usage_payload, _ = build_payload(usage)
-            log(f"usage   ({len(usage_payload):3d}B): {usage_payload.decode()}")
+            payload, _ = build_payload(usage)
+            usage_payloads.append(("codex", payload))
+            log(f"usage   codex  ({len(payload):3d}B): {payload.decode()}")
         except ApiError as exc:
             errors.append(exc)
             log(f"Codex 失败（{exc.status}）：{str(exc)[:160]}")
+
+    if not args.no_claude:
+        claude_token = load_claude_token()
+        if not claude_token:
+            log("读不到 Claude Code 凭据（仅 macOS Keychain），跳过")
+        else:
+            try:
+                usage = fetch_claude_usage(claude_token)
+                if args.print_claude:
+                    print(json.dumps(usage, indent=2, ensure_ascii=False))
+                payload, _ = build_claude_payload(usage)
+                usage_payloads.append(("claude", payload))
+                log(f"usage   claude ({len(payload):3d}B): {payload.decode()}")
+            except ApiError as exc:
+                errors.append(exc)
+                log(f"Claude 失败（{exc.status}）：{str(exc)[:160]}")
 
     if not args.no_deepseek:
         key = args.deepseek_key or os.environ.get(DEEPSEEK_KEY_ENV, "")
@@ -267,21 +360,21 @@ def _collect(args, token: str, account_id: str) -> tuple[bytes | None, bytes | N
                 if args.print_balance:
                     print(json.dumps(balance, indent=2, ensure_ascii=False))
                 balance_payload, _ = build_balance_payload(balance)
-                log(f"balance ({len(balance_payload):3d}B): {balance_payload.decode()}")
+                log(f"balance deepseek({len(balance_payload):3d}B): {balance_payload.decode()}")
             except ApiError as exc:
                 errors.append(exc)
                 log(f"DeepSeek 失败（{exc.status}）：{str(exc)[:160]}")
 
-    return usage_payload, balance_payload, errors
+    return usage_payloads, balance_payload, errors
 
 
 async def run_cycle(args, token: str, account_id: str) -> bool:
-    usage_payload, balance_payload, errors = _collect(args, token, account_id)
+    usage_payloads, balance_payload, errors = _collect(args, token, account_id)
 
     if args.dry_run:
-        return not errors and (usage_payload is not None or balance_payload is not None)
+        return not errors and (bool(usage_payloads) or balance_payload is not None)
 
-    if usage_payload is None and balance_payload is None:
+    if not usage_payloads and balance_payload is None:
         return False
 
     from bleak import BleakClient, BleakScanner
@@ -299,8 +392,8 @@ async def run_cycle(args, token: str, account_id: str) -> bool:
 
     log(f"连接 {device.address} …")
     async with BleakClient(device, timeout=args.connect_timeout) as client:
-        if usage_payload is not None:
-            await client.write_gatt_char(USAGE_CHAR_UUID, usage_payload, response=True)
+        for _name, payload in usage_payloads:
+            await client.write_gatt_char(USAGE_CHAR_UUID, payload, response=True)
         if balance_payload is not None:
             await client.write_gatt_char(BALANCE_CHAR_UUID, balance_payload, response=True)
         try:
@@ -320,6 +413,7 @@ async def main_async(args) -> int:
         token, account_id = load_codex_tokens()
 
     log(f"Codex    endpoint: {USAGE_URL}")
+    log(f"Claude   endpoint: {CLAUDE_USAGE_URL}")
     log(f"DeepSeek endpoint: {DEEPSEEK_BALANCE_URL}")
 
     backoff = args.interval
@@ -340,12 +434,14 @@ async def main_async(args) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Codex 用量 + DeepSeek 余额 → ESP32-Pulsar (BLE)")
+    parser = argparse.ArgumentParser(description="用量/余额 → ESP32-Pulsar (BLE)")
     parser.add_argument("--once", action="store_true", help="只推送一次")
     parser.add_argument("--dry-run", action="store_true", help="只打印 payload，不连 BLE")
     parser.add_argument("--print-usage", action="store_true", help="打印 Codex 原始 JSON")
+    parser.add_argument("--print-claude", action="store_true", help="打印 Claude 原始 JSON")
     parser.add_argument("--print-balance", action="store_true", help="打印 DeepSeek 原始 JSON")
     parser.add_argument("--no-codex", action="store_true", help="跳过 Codex 用量")
+    parser.add_argument("--no-claude", action="store_true", help="跳过 Claude 用量")
     parser.add_argument("--no-deepseek", action="store_true", help="跳过 DeepSeek 余额")
     parser.add_argument("--deepseek-key", default="", help="覆盖 DEEPSEEK_API_KEY")
     parser.add_argument("--interval", type=float, default=60.0, help="循环间隔秒（默认 60）")

@@ -118,7 +118,7 @@ ESP32-Pulsar/
 │   ├── cube3d.c/.h           ← 3D 立方体投影、命中区、惯性（含可配置 params）
 │   ├── watchface.c/.h        ← 点阵字形、百分比/电量格式化
 │   ├── dial_layout.c/.h      ← 圆屏极坐标切割模型（环带/分格/命中/排版可用性，纯几何）
-│   ├── usage_model.c/.h      ← Codex 用量数据模型（JSON 解析/倒计时文案/seqlock 共享存储）
+│   ├── usage_model.c/.h      ← provider 无关的用量模型（Codex/Claude/NVIDIA/AMD/GLM，按 provider 分槽）
 │   ├── balance_model.c/.h    ← DeepSeek 余额数据模型（分制金额/seqlock 共享存储）
 │   ├── json_min.c/.h         ← 极简扁平 JSON 取值原语（两个数据模型共用）
 │   └── video_source.c/.h     ← TF 卡 RGB565 文件读取状态机（与 LVGL 无关）
@@ -140,7 +140,9 @@ ESP32-Pulsar/
 │   ├── screen_about.c/.h     + about_layout.h
 │   ├── screen_agent.c/.h     + agent_layout.h       ← Hex-Ball
 │   ├── screen_3dmodel.c/.h   + model3d_layout.h     ← 3D 模型
-│   ├── screen_codex_usage.c/.h + codex_usage_layout.h ← Codex 使用量 Watch Face
+│   ├── usage_face.c/.h + usage_face_layout.h          ← 共用用量表盘绘制（provider 无关）
+│   ├── screen_codex_usage.c/.h                        ← Codex 用量（薄封装）
+│   ├── screen_claude_usage.c/.h                       ← Claude 用量（薄封装）
 │   └── screen_balance.c/.h   + balance_layout.h       ← DeepSeek 余额
 │
 ├── ui/                       ← LVGL 基础层（SquareLine Studio 生成，尽量不手改）
@@ -234,6 +236,7 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 ```
 电脑: client/pulsar_ble_client.py
   ~/.codex/auth.json → GET chatgpt.com/backend-api/codex/usage
+  Keychain「Claude Code-credentials」→ GET api.anthropic.com/api/oauth/usage
   $DEEPSEEK_API_KEY  → GET api.deepseek.com/user/balance
         │ BLE write（用量 0b1e5a11-…，余额 0b1e5a13-…）
         ▼
@@ -242,7 +245,8 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 ```
 
 - 广播名 `ESP32-Pulsar`；服务 `0b1e5a10-…`、用量 `0b1e5a11-…`、状态 `0b1e5a12-…`、余额 `0b1e5a13-…`，两端必须一致。
-- JSON 键：用量（`cu/ci/wu/wi/wl/pl/cc/un/rl`）在 `core/usage_model.h`，余额（`cur/tot/gr/top/av`，金额单位分）在 `core/balance_model.h`，改键名要同步 `client/`。
+- **用量是 provider 无关的接口**：同一特征值 + JSON 里的 `p` 区分服务（0=Codex 1=Claude 2=NVIDIA 3=AMD 4=GLM），加新服务只需改 `usage_provider_t` 枚举 + provider 表 + 一个薄屏文件。
+- JSON 键：用量（`p/cu/ci/wu/wi/wl/pl/cc/un/rl`）在 `core/usage_model.h`，余额（`cur/tot/gr/top/av`，金额单位分）在 `core/balance_model.h`，改键名要同步 `client/`。
 - `~/.codex/auth.json` 是 OAuth 凭据，**只在电脑端读取，绝不写进固件**。
 - 无数据或超过 `WF_USAGE_STALE_MS`（90s）时，屏幕回落到 `Waiting for BLE` / `NO DATA`。
 

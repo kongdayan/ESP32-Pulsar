@@ -123,15 +123,22 @@ ffmpeg -i input.mp4 -vf "scale=360:360,fps=24" -pix_fmt rgb565be -f rawvideo vid
 - Ball passing through a gap scores a point — the ring breaks and respawns at the outer edge, then slowly shrinks inward
 - Ball bouncing off a solid side reflects elastically based on surface normal
 
-#### Codex Usage Watch Face (real data over BLE)
+#### Usage Watch Faces (real data over BLE)
 
-The `codex_usage` screen shows your **real** Codex rate limits: current (5 h) and
-weekly used percentages, reset countdowns, and a live/stale link indicator.
+The `codex_usage` and `claude_usage` screens show **real** rate limits: current
+(5 h) and weekly used percentages, reset countdowns, and a live/stale link
+indicator. Rendering is shared (`screens/usage_face.c`); adding a provider is one
+enum value in `core/usage_model.h` plus a thin screen file.
 
 The device advertises as a BLE peripheral (`ESP32-Pulsar`, service
 `0b1e5a10-7e3d-4f1a-9c2b-1a2b3c4d5e60`). The Python client in [`client/`](client/)
-reads your local Codex OAuth token, fetches usage from the ChatGPT backend, and
-writes a compact JSON payload to characteristic `0b1e5a11-…`:
+fetches each provider and writes a compact JSON payload to characteristic
+`0b1e5a11-…`; the `p` field selects the provider (0 = Codex, 1 = Claude):
+
+| Provider | Source | Credential |
+|---|---|---|
+| Codex | `GET chatgpt.com/backend-api/codex/usage` | `~/.codex/auth.json` |
+| Claude | `GET api.anthropic.com/api/oauth/usage` | macOS Keychain `Claude Code-credentials` |
 
 ```bash
 cd client && pip install -r requirements.txt
@@ -140,19 +147,19 @@ python3 pulsar_ble_client.py --dry-run   # verify the data first, no BLE
 python3 pulsar_ble_client.py             # push every 60 s
 ```
 
-The firmware parses it in `core/usage_model.c`; the screen refreshes every second.
+The firmware parses it in `core/usage_model.c`; each screen refreshes every second.
 With no data (or older than 90 s) it falls back to `Waiting for BLE` / `NO DATA`.
 See [`client/README.md`](client/README.md) for the payload schema and troubleshooting.
 
 #### DeepSeek Balance (real data over BLE)
 
-A second screen (`balance`) shows the DeepSeek account balance: total, topped-up and
+A third screen (`balance`) shows the DeepSeek account balance: total, topped-up and
 granted amounts, plus an availability flag. The same client fetches it from
 `GET api.deepseek.com/user/balance` (key from `DEEPSEEK_API_KEY`) and writes a
 compact JSON payload to characteristic `0b1e5a13-…`; amounts travel as integer
 cents. The firmware model is `core/balance_model.c`.
 
-Swipe right from the Codex watch face to reach it.
+Navigation: About → Codex → **Claude** → Balance (swipe right).
 
 ---
 

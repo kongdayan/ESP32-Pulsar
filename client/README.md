@@ -14,7 +14,11 @@ DeepSeek 后端 ──HTTPS──┘                                        │
 | 数据源 | 接口 | 凭据 | 写入特征值 |
 |---|---|---|---|
 | Codex 用量 | `GET chatgpt.com/backend-api/codex/usage` | `~/.codex/auth.json`（OAuth，本地读取） | `0b1e5a11-…` |
+| Claude 用量 | `GET api.anthropic.com/api/oauth/usage` | macOS Keychain `Claude Code-credentials` | `0b1e5a11-…` |
 | DeepSeek 余额 | `GET api.deepseek.com/user/balance` | 环境变量 `DEEPSEEK_API_KEY` | `0b1e5a13-…` |
+
+> 用量类数据**共用** `0b1e5a11-…`，用 JSON 里的 `p` 区分 provider
+> （0=Codex 1=Claude 2=NVIDIA 3=AMD 4=GLM，见 `core/usage_model.h`）。
 
 ## 安装
 
@@ -34,9 +38,10 @@ export DEEPSEEK_API_KEY=sk-...             # 只在当前 shell 生效
 python3 pulsar_ble_client.py               # 循环，每 60s 推一次
 python3 pulsar_ble_client.py --once        # 只推一次
 python3 pulsar_ble_client.py --dry-run     # 只打印 payload，不连 BLE（先验证取数）
-python3 pulsar_ble_client.py --no-codex    # 只推 DeepSeek 余额
-python3 pulsar_ble_client.py --no-deepseek # 只推 Codex 用量
-python3 pulsar_ble_client.py --print-usage --print-balance   # 打印原始 JSON
+python3 pulsar_ble_client.py --no-codex    # 只推 Claude + DeepSeek
+python3 pulsar_ble_client.py --no-claude   # 跳过 Claude
+python3 pulsar_ble_client.py --no-deepseek # 跳过余额
+python3 pulsar_ble_client.py --print-usage --print-claude --print-balance   # 原始 JSON
 python3 pulsar_ble_client.py --interval 30
 ```
 
@@ -45,9 +50,9 @@ python3 pulsar_ble_client.py --interval 30
 
 ## 数据格式
 
-### Codex 用量（`0b1e5a11-…`）
+### 用量（`0b1e5a11-…`，Codex / Claude 共用）
 
-实测响应关键字段：
+Codex 实测响应关键字段：
 
 ```json
 {
@@ -60,15 +65,25 @@ python3 pulsar_ble_client.py --interval 30
 }
 ```
 
-压成扁平 JSON：
+压成扁平 JSON（`p` 选择 provider）：
 
 | 键 | 含义 |
 |---|---|
-| `cu` / `wu` | current(5h) / weekly 已用百分比 0..100 |
-| `ci` / `wi` | 距重置剩余秒数（优先服务端 `reset_after_seconds`） |
+| `p` | provider：0 Codex / 1 Claude / 2 NVIDIA / 3 AMD / 4 GLM |
+| `cu` / `wu` | current(5h/session) / weekly 已用百分比 0..100 |
+| `ci` / `wi` | 距重置剩余秒数（优先服务端给的剩余秒） |
 | `wl` | weekly 重置的本地时间文案，如 `16:14 on 18 May` |
 | `pl` | 计划：0 未知 / 1 free / 2 go / 3 plus / 4 pro / 5 team / 6 ent |
 | `cc` / `un` / `rl` | 有额度 / 无限 / 已触发限额 |
+
+Claude 实测响应（`five_hour` / `seven_day`，或等价的 `limits[]`）：
+
+```json
+{ "five_hour": { "utilization": 0.0,  "resets_at": "2026-09-09T08:29:59+00:00" },
+  "seven_day": { "utilization": 20.0, "resets_at": "2026-09-14T17:59:59+00:00" } }
+```
+
+实测扁平结果：`{"p":1,"cu":0,"ci":16380,"wu":20,"wi":482580,"wl":"01:59 on 15 Sep",...}`
 
 ### DeepSeek 余额（`0b1e5a13-…`）
 
@@ -98,6 +113,8 @@ python3 pulsar_ble_client.py --interval 30
 | `接口 403` | Codex 接口被 Cloudflare 限流（请求过密）。脚本会自动退避；也可加大 `--interval` |
 | `未设置 DEEPSEEK_API_KEY` | `export DEEPSEEK_API_KEY=sk-...` 后重跑 |
 | DeepSeek 401 | API key 无效或余额不足，去 platform.deepseek.com 检查 |
+| `读不到 Claude Code 凭据` | 仅 macOS 支持；确认已用 Claude Code 登录过（Keychain 里有 `Claude Code-credentials`） |
+| Claude 401 | Claude OAuth token 过期，终端跑一次 `claude` 刷新 |
 | 扫不到设备 | 确认固件已烧入且上电、串口没有刷屏报错；设备广播名是 `ESP32-Pulsar` |
 | 屏幕仍显示 `Waiting for BLE` / `--` | 用 `--dry-run` 看 payload 是否合法；确认已连接成功 |
 | 想换 endpoint | 环境变量 `PULSAR_USAGE_URL` / `PULSAR_DEEPSEEK_URL` |
