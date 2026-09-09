@@ -1,14 +1,15 @@
 # client/ — 电脑端 BLE 推送客户端
 
-把电脑上的实时数据经 BLE 写入 ESP32-Pulsar 的圆屏。两个数据源各写一个特征值：
+把电脑上的实时数据经 BLE 写入 ESP32-Pulsar 的圆屏。三个数据源、两个特征值
+（用量共用 `0b1e5a11-…`，余额走 `0b1e5a13-…`）：
 
 ```
-Codex 后端    ──HTTPS──┐
+Codex  后端   ──HTTPS──┐
  /codex/usage          │   pulsar_ble_client.py            ESP32-Pulsar
-                       ├─▶  (读 auth.json / API key) ──BLE──▶  hal/ble_usage.cpp
-DeepSeek 后端 ──HTTPS──┘                                        │
- /user/balance                                                  ▼
-                                                    core/*_model.c → 屏幕
+Claude 后端   ──HTTPS──┼─▶  (读 auth.json / Keychain) ──BLE──▶  hal/ble_usage.cpp
+ /api/oauth/usage      │                                          │
+DeepSeek 后端 ──HTTPS──┘                                          ▼
+ /user/balance                                          core/*_model.c → 屏幕
 ```
 
 | 数据源 | 接口 | 凭据 | 写入特征值 |
@@ -117,4 +118,4 @@ Claude 实测响应（`five_hour` / `seven_day`，或等价的 `limits[]`）：
 | Claude 401 | Claude OAuth token 过期，终端跑一次 `claude` 刷新 |
 | 扫不到设备 | 确认固件已烧入且上电、串口没有刷屏报错；设备广播名是 `ESP32-Pulsar` |
 | 屏幕仍显示 `Waiting for BLE` / `--` | 用 `--dry-run` 看 payload 是否合法；确认已连接成功 |
-| 想换 endpoint | 环境变量 `PULSAR_USAGE_URL` / `PULSAR_DEEPSEEK_URL` |
+| 想换 endpoint | 环境变量 `PULSAR_USAGE_URL` / `PULSAR_CLAUDE_USAGE_URL` / `PULSAR_DEEPSEEK_URL`；Codex 凭据路径 `PULSAR_CODEX_AUTH` |

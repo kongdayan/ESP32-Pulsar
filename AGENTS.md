@@ -142,8 +142,8 @@ ESP32-Pulsar/
 │   ├── screen_3dmodel.c/.h   + model3d_layout.h     ← 3D 模型
 │   ├── usage_face.c/.h + usage_face_layout.h          ← 共用用量表盘绘制（provider 无关）
 │   ├── screen_codex_usage.c/.h                        ← Codex 用量（薄封装）
-│   ├── screen_claude_usage.c/.h                       ← Claude 用量（薄封装）
-│   └── screen_balance.c/.h   + balance_layout.h       ← DeepSeek 余额
+│   ├── screen_claude_usage.c                          ← Claude 用量（薄封装）
+│   └── screen_balance.c      + balance_layout.h       ← DeepSeek 余额
 │
 ├── ui/                       ← LVGL 基础层（SquareLine Studio 生成，尽量不手改）
 │   ├── ui.c / ui.h           ← 主题初始化、开机首屏、全局 screen 声明
@@ -160,7 +160,7 @@ ESP32-Pulsar/
 │   ├── reference/            ← 重构前实现的逐字副本，供差分测试比对（不计覆盖率）
 │   └── tools/                ← 覆盖率汇总脚本（CI 门禁用）
 │
-├── client/                   ← 电脑端 BLE 客户端（Python + bleak），取 Codex 用量并写入设备
+├── client/                   ← 电脑端 BLE 客户端（Python + bleak），取 Codex/Claude 用量与 DeepSeek 余额
 ├── assets/                   ← 设计原图（PNG），不编译进固件
 ├── example/                  ← 效果截图（dark/light 主题对比图）
 ├── test/                     ← 测试用真机照片
@@ -231,7 +231,7 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 
 > 宏定义见 `hal/pincfg.h`；屏幕尺寸/动画时长/路径/帧率等**非引脚**常量在 `core/app_config.h`。
 
-### BLE 用量链路（Codex 表盘）
+### BLE 数据链路（用量 + 余额）
 
 ```
 电脑: client/pulsar_ble_client.py
@@ -245,10 +245,12 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 ```
 
 - 广播名 `ESP32-Pulsar`；服务 `0b1e5a10-…`、用量 `0b1e5a11-…`、状态 `0b1e5a12-…`、余额 `0b1e5a13-…`，两端必须一致。
-- **用量是 provider 无关的接口**：同一特征值 + JSON 里的 `p` 区分服务（0=Codex 1=Claude 2=NVIDIA 3=AMD 4=GLM），加新服务只需改 `usage_provider_t` 枚举 + provider 表 + 一个薄屏文件。
+- **用量是 provider 无关的接口**：同一特征值 + JSON 里的 `p` 区分服务（0=Codex 1=Claude 2=NVIDIA 3=AMD 4=GLM）。加新服务需四处：
+  `usage_provider_t` 补枚举 + `usage_providers[]` 补一行 → `core/nav_map.{h,c}` 加 id 与链路 →
+  `common/ui_screen.c` 登记 `k_screen_refs` + `ui/ui.h` 声明 → `platformio.ini` 注册源文件（薄屏文件只写 provider/屏 id）。
 - JSON 键：用量（`p/cu/ci/wu/wi/wl/pl/cc/un/rl`）在 `core/usage_model.h`，余额（`cur/tot/gr/top/av`，金额单位分）在 `core/balance_model.h`，改键名要同步 `client/`。
 - `~/.codex/auth.json` 是 OAuth 凭据，**只在电脑端读取，绝不写进固件**。
-- 无数据或超过 `WF_USAGE_STALE_MS`（90s）时，屏幕回落到 `Waiting for BLE` / `NO DATA`。
+- 无数据或超过 `APP_BLE_STALE_MS`（90s）时，屏幕回落到 `Waiting for BLE` / `NO DATA`。
 
 ---
 
@@ -258,7 +260,7 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 
 ```
 ui_init()
-  └─ 创建主题 + 加载开机首屏（ui/ui.c: UI_STARTUP_SCREEN）
+  └─ 创建主题 + 加载开机首屏（ui/ui.c 直接调 screen_codex_usage_init）
         ↓ 用户滑动 / 点击
   screen_xxx_get_ptr() → NULL ？→ screen_xxx_init()（内部调用 ui_screen_create）
         ↓
@@ -355,7 +357,7 @@ _ui_screen_change(screen_info_get_ptr(), LV_SCR_LOAD_ANIM_MOVE_LEFT,
    `extern const`；函数内的临时不变量用 `const`，需要编译期求值用 `enum` 常量。
 2. **颜色必须走主题角色**：新增颜色先在 `core/ui_theme.h` 的 `ui_color_role_t` 里加角色，
    再用 `ui_theme_color(role)`（`core/ui_theme.h`）取；不允许在屏幕里写 `lv_color_hex(0x…)`。
-   （`screen_codex_usage.c` 里的 `role_color()` 是该屏自己的浅封装，会跟随它本地深浅色状态。）
+   （`screens/usage_face.c` 里的 `role_color()` 是共用浅封装，会跟随该屏本地深浅色状态。）
 3. **纯计算下沉 core/**：任何不碰 LVGL/HAL 的判断、夹取、坐标换算、状态机都写进
    `core/`，在 `tests/unit/` 里直接测；HAL 只做"执行"，不做"决策"。
 4. **每屏一文件**：所有静态状态变量放在该 `.c` 文件内部，不跨文件共享。

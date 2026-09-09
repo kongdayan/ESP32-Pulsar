@@ -126,14 +126,15 @@ ffmpeg -i input.mp4 -vf "scale=360:360,fps=24" -pix_fmt rgb565be -f rawvideo vid
 #### Usage Watch Faces (real data over BLE)
 
 The `codex_usage` and `claude_usage` screens show **real** rate limits: current
-(5 h) and weekly used percentages, reset countdowns, and a live/stale link
+(5 h) and weekly used percentages, a live reset countdown, and a live/stale link
 indicator. Rendering is shared (`screens/usage_face.c`); adding a provider is one
 enum value in `core/usage_model.h` plus a thin screen file.
 
 The device advertises as a BLE peripheral (`ESP32-Pulsar`, service
 `0b1e5a10-7e3d-4f1a-9c2b-1a2b3c4d5e60`). The Python client in [`client/`](client/)
 fetches each provider and writes a compact JSON payload to characteristic
-`0b1e5a11-…`; the `p` field selects the provider (0 = Codex, 1 = Claude):
+`0b1e5a11-…`; the `p` field selects the provider (0 = Codex, 1 = Claude,
+2 = NVIDIA, 3 = AMD, 4 = GLM):
 
 | Provider | Source | Credential |
 |---|---|---|
@@ -159,7 +160,7 @@ granted amounts, plus an availability flag. The same client fetches it from
 compact JSON payload to characteristic `0b1e5a13-…`; amounts travel as integer
 cents. The firmware model is `core/balance_model.c`.
 
-Navigation: About → Codex → **Claude** → Balance (swipe right).
+Navigation: Codex →(swipe right) Claude →(swipe right) Balance; About ←(swipe left) Codex.
 
 ---
 
