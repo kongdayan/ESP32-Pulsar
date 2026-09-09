@@ -18,3 +18,6 @@ badminton.mp4
 
 # 主机侧单元测试的构建产物
 tests/build/
+
+# LLVM 覆盖率产物（正常路径下写入 tests/build/prof/，未设 LLVM_PROFILE_FILE 时会掉到 CWD）
+*.profraw
