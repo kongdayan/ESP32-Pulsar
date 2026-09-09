@@ -101,7 +101,15 @@ ESP32-Pulsar/
 └── backup/                      # Archived legacy design exports
 ```
 
-The active UI is implemented directly in LVGL C code under `screens/`. Swipe left/right to navigate between lazily-created screens.
+The active UI is implemented directly in LVGL C code under `screens/` — **one `.c`
+per screen** plus a `*_layout.h` constants header, with every declaration in
+`ui/ui.h`. Swipe left/right to navigate between lazily-created screens.
+
+Screen flow: `core/nav_map.c` (topology) → `common/ui_screen.c` (`k_screen_refs`)
+→ `screens/screen_*.c` (view) → `core/*_model.c` (data). Shared drawing lives in
+`screens/usage_face.c`. Adding a screen touches four places (nav id + link, the
+screen `.c`, `ui/ui.h` + `k_screen_refs`, `platformio.ini`); do **not** add a
+per-screen `.h`.
 
 #### TF Card Video Screen
 

@@ -184,6 +184,35 @@ hal/      →  Arduino + 外设库（决策逻辑一律下沉到 core/）
 ui/       →  SquareLine 生成层，除 ui.c 外不手改
 ```
 
+### UI 分层速查（新屏放哪）
+
+| 目录 | 放什么 |
+|------|--------|
+| `screens/` | **每屏一个 `.c`** + 该屏的 `*_layout.h` 常量头；共用绘制也放这里（如 `usage_face.c`） |
+| `common/` | 跨屏脚手架：`ui_screen.c/.h`（建屏、懒加载、导航事件、控件工厂、定时器生命周期） |
+| `core/` | 纯逻辑：`nav_map`（导航表）、`*_model`（数据模型）、`*_layout`（几何）、`ui_theme`（取色） |
+| `ui/` | SquareLine 底座：`ui.c`（主题 + 开机首屏）、`ui.h`（**所有屏的唯一声明处**）、`ui_helpers`、图片 |
+| `hal/` | 硬件：屏/触摸、SD、BLE（只做执行，不做决策） |
+
+**一屏的完整链路**（以 Claude 用量屏为例）：
+
+```
+core/nav_map.c       导航表：codex --右滑--> claude --右滑--> balance
+        │ ui_nav_go()
+        ▼
+common/ui_screen.c   k_screen_refs[NAV_SCREEN_CLAUDE_USAGE] → screen_claude_usage_init()
+        ▼
+screens/screen_claude_usage.c   薄封装：usage_face_init(&face, USAGE_PROVIDER_CLAUDE, …)
+        ▼
+screens/usage_face.c            on_draw：读 core/usage_model 的共享存储 → 绘制
+        ▲
+core/usage_model.c              BLE 写入 → usage_parse_json → usage_store_set（按 provider 分槽）
+```
+
+新增一屏只动 **4 处**（完整步骤见 §七）：`core/nav_map.{h,c}` 加 id 与左右链路 →
+`screens/screen_foo.c`（+ `foo_layout.h`）→ `ui/ui.h` 声明 + `common/ui_screen.c` 的
+`k_screen_refs[]` 登记 → `platformio.ini` 注册源文件。**不要再建 `screen_foo.h`。**
+
 ---
 
 ## 五、硬件平台参数
