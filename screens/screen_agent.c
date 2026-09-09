@@ -21,7 +21,7 @@ static hexball_game_t model;
 static void on_tick(lv_timer_t *t);
 
 static const ui_timer_binding_t s_game_timer = {
-    on_tick, APP_GAME_TICK_MS, &ticker,
+    on_tick, APP_GAME_TICK_MS, &ticker, NULL,
 };
 
 static uint32_t lvgl_rand(void *user, uint32_t low, uint32_t high)

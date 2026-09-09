@@ -25,7 +25,7 @@ static lv_point_t  press_pt;
 static void on_tick(lv_timer_t *t);
 
 static const ui_timer_binding_t s_model_timer = {
-    on_tick, APP_GAME_TICK_MS, &ticker,
+    on_tick, APP_GAME_TICK_MS, &ticker, NULL,
 };
 
 static void update_zoom_label(void)

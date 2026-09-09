@@ -76,6 +76,7 @@ typedef struct {
     lv_timer_cb_t cb;
     uint32_t      period_ms;
     lv_timer_t  **handle;
+    void         *user_data;   /* 传给 lv_timer_create 的 user_data，可为 NULL */
 } ui_timer_binding_t;
 
 void ui_timer_attach(lv_obj_t *scr, const ui_timer_binding_t *binding);

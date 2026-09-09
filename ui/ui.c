@@ -1,7 +1,6 @@
 #include "ui.h"
 
 #include "app_config.h"
-#include "nav_map.h"
 
 #if LV_COLOR_DEPTH != 16
     #error "LV_COLOR_DEPTH must be 16"
@@ -14,7 +13,6 @@
 #define UI_DEFAULT_PRIMARY_PALETTE   LV_PALETTE_BLUE
 #define UI_DEFAULT_SECONDARY_PALETTE LV_PALETTE_RED
 #define UI_DEFAULT_DARK_MODE         true
-#define UI_STARTUP_SCREEN            NAV_SCREEN_CODEX_USAGE
 
 void ui_init(void)
 {

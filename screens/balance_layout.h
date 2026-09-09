@@ -15,14 +15,12 @@
 #define BAL_TEXT_GRANTED      "GRANTED"
 #define BAL_TEXT_AVAILABLE    "AVAILABLE"
 #define BAL_TEXT_UNAVAILABLE  "LIMITED"
-#define BAL_TEXT_WAITING      "Waiting for BLE"
 #define BAL_TEXT_NO_AMOUNT    "--"
 #define BAL_FMT_ROW           "%s  %s"
 
-/* ── 刷新 / 过期 ──────────────────────────────────────────────────────────── */
-#define BAL_REFRESH_MS        1000u
-#define BAL_STALE_MS          (90u * 1000u)
+/* ── 刷新 / 过期（阈值在 core/app_config.h） ──────────────────────────────── */
 #define BAL_ROW_TEXT_MAX      32
+#define BAL_ROW_COUNT         3
 
 /* ── 布局（相对屏幕中心的 y 偏移） ───────────────────────────────────────── */
 #define BAL_TITLE_Y           (-132)

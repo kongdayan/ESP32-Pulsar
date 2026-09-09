@@ -14,7 +14,6 @@
 #include <unistd.h>
 
 #include "app_config.h"
-#include "usage_face_layout.h"
 #include "esp_heap_caps.h"
 #include "lv_host.h"
 #include "sd_card.h"
@@ -378,7 +377,7 @@ MT_TEST(test_codex_usage_renders_live_data)
     CHECK(lv_host_non_black_pixels() >= 200u);
 
     /* 数据过期后回落到占位文案，屏幕仍必须能画 */
-    lv_host_advance_ms(WF_USAGE_STALE_MS + 1000u);
+    lv_host_advance_ms(APP_BLE_STALE_MS + 1000u);
     render_a_bit();
     CHECK(lv_host_non_black_pixels() >= 200u);
 

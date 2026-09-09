@@ -37,6 +37,11 @@
 #define APP_TOUCH_I2C_FREQ_HZ    400000u
 #define APP_LV_DRAW_CACHE_ROWS   72u       /* LVGL 局部刷新缓冲行数 */
 
+/* ── BLE 数据链路 ─────────────────────────────────────────────────────────── */
+#define APP_BLE_REFRESH_MS      1000u              /* 屏幕刷新周期（倒计时/过期回落） */
+#define APP_BLE_STALE_MS        (90u * 1000u)      /* 超过此时长未更新视为断链 */
+#define APP_TEXT_WAITING_BLE    "Waiting for BLE"
+
 /* ── SD / TF 卡 ───────────────────────────────────────────────────────────── */
 #define APP_SD_BUS_WIDTH         4u
 #define APP_KILOBYTE             1024u

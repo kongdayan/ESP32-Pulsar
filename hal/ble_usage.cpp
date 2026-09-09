@@ -28,11 +28,10 @@ const uint16_t    kPreferredMtu  = 512;
 const char *const kStatusBoot    = "boot";
 const char *const kStatusOk      = "ok";
 const char *const kStatusError   = "err";
-const uint16_t    kAdvMinFast    = 0x06;
-const uint16_t    kAdvMinSlow    = 0x12;
+const uint16_t    kAdvMinInterval = 0x06;
+const uint16_t    kAdvMaxInterval = 0x12;
 
 BLECharacteristic *g_status = nullptr;
-volatile bool      g_connected = false;
 
 void publish_status(const char *text)
 {
@@ -78,15 +77,8 @@ class BalanceWriteCallbacks : public BLECharacteristicCallbacks {
 };
 
 class ServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer *server) override
-    {
-        (void)server;
-        g_connected = true;
-    }
-
     void onDisconnect(BLEServer *server) override
     {
-        g_connected = false;
         server->startAdvertising();      /* 断开后继续广播，客户端可重连 */
     }
 };
@@ -121,12 +113,7 @@ void ble_usage_init(void)
     BLEAdvertising *advertising = BLEDevice::getAdvertising();
     advertising->addServiceUUID(kServiceUuid);
     advertising->setScanResponse(true);
-    advertising->setMinPreferred(kAdvMinFast);
-    advertising->setMinPreferred(kAdvMinSlow);
+    advertising->setMinPreferred(kAdvMinInterval);
+    advertising->setMaxPreferred(kAdvMaxInterval);
     BLEDevice::startAdvertising();
-}
-
-bool ble_usage_is_connected(void)
-{
-    return g_connected;
 }

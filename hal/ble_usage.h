@@ -16,9 +16,6 @@ extern "C" {
 
 void ble_usage_init(void);
 
-/* 当前是否有中心设备连接（用于屏幕上的链路状态提示） */
-bool ble_usage_is_connected(void);
-
 #ifdef __cplusplus
 }
 #endif

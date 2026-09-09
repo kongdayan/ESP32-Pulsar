@@ -12,6 +12,12 @@
 #include "usage_face_layout.h"
 #include "watchface.h"
 
+/* 徽标内部小点（相对 MARK 中心的绝对坐标） */
+static const int16_t k_wf_mark_dots[WF_MARK_DOT_COUNT][2] = {
+    {  94, 57 }, {  98, 61 }, { 102, 65 }, {  98, 69 },
+    {  94, 73 }, { 110, 73 }, { 114, 73 }, { 118, 73 },
+};
+
 static uint32_t role_color(const usage_face_t *face, ui_color_role_t role)
 {
     return ui_theme_color(face->theme, role);
@@ -237,7 +243,7 @@ static void on_draw(lv_event_t *e)
     const uint32_t now_ms = (uint32_t)lv_tick_get();
     usage_data_t usage;
     const bool live = usage_store_get(face->provider, &usage) && usage.valid &&
-                      !usage_is_stale(&usage, now_ms, WF_USAGE_STALE_MS);
+                      !usage_is_stale(&usage, now_ms, APP_BLE_STALE_MS);
     const int current_pct = live ? usage.current_used_pct : 0;
     const int weekly_pct  = live ? usage.weekly_used_pct : 0;
 
@@ -248,8 +254,8 @@ static void on_draw(lv_event_t *e)
                                current_reset, sizeof(current_reset));
         usage_format_weekly(usage.weekly_reset_label, weekly_reset, sizeof(weekly_reset));
     } else {
-        snprintf(current_reset, sizeof(current_reset), "%s", WF_TEXT_WAITING);
-        snprintf(weekly_reset, sizeof(weekly_reset), "%s", WF_TEXT_WAITING);
+        snprintf(current_reset, sizeof(current_reset), "%s", APP_TEXT_WAITING_BLE);
+        snprintf(weekly_reset, sizeof(weekly_reset), "%s", APP_TEXT_WAITING_BLE);
     }
 
     draw_rect(dc, 0, 0, APP_SCREEN_MAX_COORD, APP_SCREEN_MAX_COORD, LV_RADIUS_CIRCLE,
@@ -293,13 +299,13 @@ static void on_draw(lv_event_t *e)
     draw_right_percent(dc, weekly_pct, WF_PERCENT_RIGHT_X, WF_WEEKLY_PERCENT_Y,
                        role_color(face, UI_ROLE_GREEN), LV_OPA_COVER);
     draw_progress_dots(dc, WF_PROGRESS_X, WF_WEEKLY_PROGRESS_Y, WF_PROGRESS_DOTS,
-                       wf_progress_steps(WF_PROGRESS_DOTS, weekly_pct), 1,
+                       wf_progress_steps(WF_PROGRESS_DOTS, weekly_pct), WF_WEEKLY_PROGRESS_ROWS,
                        role_color(face, UI_ROLE_GREEN), role_color(face, UI_ROLE_GREEN_DIM));
     draw_centered_reset(dc, face, weekly_reset, WF_RESET_WEEKLY_Y);
 
     draw_dot(dc, WF_AGENT_DOT_X, WF_AGENT_DOT_Y, WF_AGENT_DOT_R,
              role_color(face, UI_ROLE_GREEN), LV_OPA_COVER);
-    draw_dot_text(dc, live ? WF_TEXT_AGENT : WF_TEXT_OFFLINE, WF_AGENT_TEXT_X, WF_AGENT_TEXT_Y,
+    draw_dot_text(dc, live ? WF_TEXT_LINK_OK : WF_TEXT_OFFLINE, WF_AGENT_TEXT_X, WF_AGENT_TEXT_Y,
                   WF_AGENT_TEXT_STEP, WF_AGENT_TEXT_DOT_R, role_color(face, UI_ROLE_GREEN),
                   LV_OPA_COVER);
 }
@@ -312,8 +318,12 @@ void usage_face_refresh(usage_face_t *face)
     lv_obj_invalidate(face->panel);
 }
 
-void usage_face_init(usage_face_t *face, usage_provider_t provider,
-                     nav_screen_id_t screen_id, const ui_timer_binding_t *binding)
+static void on_refresh(lv_timer_t *timer)
+{
+    usage_face_refresh((usage_face_t *)timer->user_data);
+}
+
+void usage_face_init(usage_face_t *face, usage_provider_t provider, nav_screen_id_t screen_id)
 {
     if (face == NULL) return;
 
@@ -324,6 +334,11 @@ void usage_face_init(usage_face_t *face, usage_provider_t provider,
     face->panel = NULL;
     face->timer = NULL;
 
+    face->binding.cb = on_refresh;
+    face->binding.period_ms = APP_BLE_REFRESH_MS;
+    face->binding.handle = &face->timer;
+    face->binding.user_data = face;
+
     /* 这屏的手势要自己处理（上下滑 = 切主题），所以不挂通用导航回调，
      * 且回调必须挂在屏幕根对象上 —— LVGL 的 GESTURE 只会发给冒泡根。 */
     face->scr = ui_screen_create_ex(screen_id, false);
@@ -333,7 +348,7 @@ void usage_face_init(usage_face_t *face, usage_provider_t provider,
     face->panel = ui_fullscreen_layer_create(face->scr, true);
     lv_obj_add_event_cb(face->panel, on_draw, LV_EVENT_ALL, face);
 
-    ui_timer_attach(face->scr, binding);
+    ui_timer_attach(face->scr, &face->binding);
 }
 
 lv_obj_t **usage_face_ptr(usage_face_t *face)

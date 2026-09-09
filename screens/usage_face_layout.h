@@ -10,10 +10,7 @@
 
 /* ── 数据来源 / 刷新 ──────────────────────────────────────────────────────── */
 /* 真实用量由 BLE 写入（hal/ble_usage.cpp → core/usage_model）。
- * 这里只放“没数据时”的占位文案与刷新/过期阈值，不再有 mock 百分比。 */
-#define WF_REFRESH_MS          1000u              /* 1s 重绘：倒计时会走动 */
-#define WF_USAGE_STALE_MS      (90u * 1000u)      /* 超过 90s 未更新视为断链 */
-#define WF_TEXT_WAITING        "Waiting for BLE"
+ * 这里只放“没数据时”的占位文案与刷新/过期阈值（阈值在 core/app_config.h）。 */
 #define WF_TEXT_OFFLINE        "NO DATA"
 
 /* ── 文本内容 ─────────────────────────────────────────────────────────────── */
@@ -21,7 +18,7 @@
 #define WF_TEXT_CURRENT        "CURRENT"
 #define WF_TEXT_WEEKLY         "WEEKLY"
 #define WF_TEXT_PERCENT        "%"
-#define WF_TEXT_AGENT          "AGENT ACTIVE"
+#define WF_TEXT_LINK_OK        "LINK OK"
 
 /* ── 外圈 ─────────────────────────────────────────────────────────────────── */
 #define WF_RING_WIDTH          7
@@ -67,12 +64,8 @@
 #define WF_MARK_TEXT_STEP      4
 #define WF_MARK_TEXT_DOT_R     1
 
-/* 标志内部的小点（相对 MARK 中心，保持旧版绝对坐标） */
+/* 通用 provider 徽标（六边形）几何；内部小点表在 usage_face.c */
 #define WF_MARK_DOT_COUNT      8
-static const int16_t k_wf_mark_dots[WF_MARK_DOT_COUNT][2] = {
-    {  94, 57 }, {  98, 61 }, { 102, 65 }, {  98, 69 },
-    {  94, 73 }, { 110, 73 }, { 114, 73 }, { 118, 73 },
-};
 
 /* ── 用量区块 ─────────────────────────────────────────────────────────────── */
 #define WF_SECTION_LABEL_X     45
@@ -97,6 +90,7 @@ static const int16_t k_wf_mark_dots[WF_MARK_DOT_COUNT][2] = {
 #define WF_PROGRESS_SPACING    11
 #define WF_PROGRESS_DOT_R      2
 #define WF_PROGRESS_ROWS       2
+#define WF_WEEKLY_PROGRESS_ROWS 1
 
 /* ── Reset 行（时钟图标 + 文本） ──────────────────────────────────────────── */
 #define WF_RESET_CLOCK_X       58
@@ -112,33 +106,8 @@ static const int16_t k_wf_mark_dots[WF_MARK_DOT_COUNT][2] = {
 #define WF_RESET_DAILY_Y       180
 #define WF_RESET_WEEKLY_Y      266
 
-/* ── 电池图标 ─────────────────────────────────────────────────────────────── */
-#define WF_BATTERY_X1          260
-#define WF_BATTERY_X2          278
-#define WF_BATTERY_Y1          66
-#define WF_BATTERY_Y2          79
-#define WF_BATTERY_CAP_X1      280
-#define WF_BATTERY_CAP_X2      283
-#define WF_BATTERY_CAP_Y1      70
-#define WF_BATTERY_CAP_Y2      75
-#define WF_BATTERY_LINE_W      1
-#define WF_BATTERY_CELL_X0     263
-#define WF_BATTERY_CELL_STEP   5
-#define WF_BATTERY_CELL_W      3
-#define WF_BATTERY_CELL_Y1     69
-#define WF_BATTERY_CELL_Y2     76
-#define WF_BATTERY_CELL_R      1
-#define WF_BATTERY_TEXT_X      256
-#define WF_BATTERY_TEXT_Y      84
-#define WF_BATTERY_TEXT_W      34
-#define WF_BATTERY_TEXT_H      12
-#define WF_BATTERY_TEXT_FMT    "%d%%"
+/* ── 数字文本 ─────────────────────────────────────────────────────────────── */
 #define WF_DIGIT_TEXT_FMT      "%d"
-
-/* 电池图标不随主题变化（沿用旧版固定配色） */
-#define WF_BATTERY_OUTLINE_COLOR 0x1F7AFFu
-#define WF_BATTERY_FILL_COLOR    0x70F52Au
-#define WF_BATTERY_TEXT_COLOR    0xFFFFFFu
 
 /* ── Agent 状态行 ─────────────────────────────────────────────────────────── */
 #define WF_AGENT_DOT_X         100

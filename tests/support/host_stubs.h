@@ -22,7 +22,6 @@ int host_sd_card_init_calls(void);
 
 void host_ble_usage_reset(void);
 int host_ble_usage_init_calls(void);
-void host_ble_usage_set_connected(bool connected);
 
 void host_arduino_reset(void);
 long host_arduino_serial_baud(void);

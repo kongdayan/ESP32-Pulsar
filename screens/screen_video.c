@@ -24,7 +24,7 @@ static bool             playback_ready = false;
 static void video_tick(lv_timer_t *timer);
 
 static const ui_timer_binding_t s_video_timer = {
-    video_tick, APP_VIDEO_FRAME_MS, &video_timer,
+    video_tick, APP_VIDEO_FRAME_MS, &video_timer, NULL,
 };
 
 static void set_status(video_status_t status)

@@ -175,7 +175,7 @@ static void ui_timer_loaded_cb(lv_event_t *e)
     if (binding == NULL || binding->handle == NULL || binding->cb == NULL) return;
     if (*binding->handle != NULL) return;
 
-    *binding->handle = lv_timer_create(binding->cb, binding->period_ms, NULL);
+    *binding->handle = lv_timer_create(binding->cb, binding->period_ms, binding->user_data);
 }
 
 static void ui_timer_unloaded_cb(lv_event_t *e)

@@ -26,11 +26,12 @@ typedef struct {
     lv_obj_t        *scr;
     lv_obj_t        *panel;
     lv_timer_t      *timer;
+    ui_timer_binding_t binding;   /* 内部组装，handle 指向 timer、user_data 指向本 face */
 } usage_face_t;
 
-/* binding 由各屏提供（静态生命周期），handle 指向 face->timer */
+/* 初始化一块用量表盘屏；刷新周期固定 APP_BLE_REFRESH_MS */
 void       usage_face_init(usage_face_t *face, usage_provider_t provider,
-                           nav_screen_id_t screen_id, const ui_timer_binding_t *binding);
+                           nav_screen_id_t screen_id);
 void       usage_face_refresh(usage_face_t *face);
 lv_obj_t **usage_face_ptr(usage_face_t *face);
 
