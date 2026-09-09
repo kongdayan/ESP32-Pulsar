@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "json_min.h"
+
 #define USAGE_MS_PER_SECOND     1000u
 #define USAGE_STORE_RETRIES     4
 
@@ -61,49 +63,6 @@ void usage_store_reset(void)
 
 /* ── 解析 ────────────────────────────────────────────────────────────────── */
 
-static const char *skip_ws(const char *p)
-{
-    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
-    return p;
-}
-
-static bool parse_int_val(const char **pp, int *out)
-{
-    const char *p = *pp;
-    bool neg = false;
-    if (*p == '-') { neg = true; p++; }
-    if (*p < '0' || *p > '9') return false;
-
-    long v = 0;
-    while (*p >= '0' && *p <= '9') {
-        v = v * 10 + (*p - '0');
-        if (v > 2147483647L) return false;
-        p++;
-    }
-    *out = (int)(neg ? -v : v);
-    *pp = p;
-    return true;
-}
-
-static bool parse_str_val(const char **pp, char *out, size_t n)
-{
-    const char *p = *pp;
-    if (*p != '"') return false;
-    p++;
-
-    size_t i = 0;
-    while (*p != '\0' && *p != '"') {
-        if (*p == '\\' && p[1] != '\0') p++;        /* 简化转义：跳过反斜杠 */
-        if (out != NULL && i + 1u < n) out[i++] = *p;
-        p++;
-    }
-    if (*p != '"') return false;
-    p++;
-    if (out != NULL) out[i] = '\0';
-    *pp = p;
-    return true;
-}
-
 static int clamp_pct(int v)
 {
     if (v < USAGE_PCT_MIN) return USAGE_PCT_MIN;
@@ -150,7 +109,7 @@ bool usage_parse_json(const char *json, usage_data_t *out)
     if (json == NULL || out == NULL) return false;
     usage_data_defaults(out);
 
-    const char *p = skip_ws(json);
+    const char *p = json_skip_ws(json);
     if (*p != '{') return false;
     p++;
 
@@ -158,29 +117,29 @@ bool usage_parse_json(const char *json, usage_data_t *out)
     bool saw_weekly  = false;
 
     while (*p != '\0') {
-        p = skip_ws(p);
+        p = json_skip_ws(p);
         if (*p == '}') break;
         if (*p == ',') { p++; continue; }
         if (*p != '"') return false;
 
         char key[USAGE_KEY_MAX];
-        if (!parse_str_val(&p, key, sizeof(key))) return false;
+        if (!json_parse_str(&p, key, sizeof(key))) return false;
 
-        p = skip_ws(p);
+        p = json_skip_ws(p);
         if (*p != ':') return false;
         p++;
-        p = skip_ws(p);
+        p = json_skip_ws(p);
 
         if (*p == '"') {
             char val[USAGE_LABEL_MAX];
-            if (!parse_str_val(&p, val, sizeof(val))) return false;
+            if (!json_parse_str(&p, val, sizeof(val))) return false;
             if (strcmp(key, USAGE_KEY_WEEKLY_LABEL) == 0) {
                 memcpy(out->weekly_reset_label, val, sizeof(out->weekly_reset_label));
                 out->weekly_reset_label[sizeof(out->weekly_reset_label) - 1u] = '\0';
             }
         } else {
             int v = 0;
-            if (!parse_int_val(&p, &v)) return false;
+            if (!json_parse_int(&p, &v)) return false;
             apply_int(out, key, v, &saw_current, &saw_weekly);
         }
     }
