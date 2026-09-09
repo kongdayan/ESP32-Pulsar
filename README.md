@@ -123,6 +123,26 @@ ffmpeg -i input.mp4 -vf "scale=360:360,fps=24" -pix_fmt rgb565be -f rawvideo vid
 - Ball passing through a gap scores a point — the ring breaks and respawns at the outer edge, then slowly shrinks inward
 - Ball bouncing off a solid side reflects elastically based on surface normal
 
+#### Codex Usage Watch Face (real data over BLE)
+
+The `codex_usage` screen shows your **real** Codex rate limits: current (5 h) and
+weekly used percentages, reset countdowns, and a live/stale link indicator.
+
+The device advertises as a BLE peripheral (`ESP32-Pulsar`, service
+`0b1e5a10-7e3d-4f1a-9c2b-1a2b3c4d5e60`). The Python client in [`client/`](client/)
+reads your local Codex OAuth token, fetches usage from the ChatGPT backend, and
+writes a compact JSON payload to characteristic `0b1e5a11-…`:
+
+```bash
+cd client && pip install -r requirements.txt
+python3 pulsar_ble_client.py --dry-run   # verify the data first, no BLE
+python3 pulsar_ble_client.py             # push every 60 s
+```
+
+The firmware parses it in `core/usage_model.c`; the screen refreshes every second.
+With no data (or older than 90 s) it falls back to `Waiting for BLE` / `NO DATA`.
+See [`client/README.md`](client/README.md) for the payload schema and troubleshooting.
+
 ---
 
 ## Design Preview

@@ -118,6 +118,7 @@ ESP32-Pulsar/
 │   ├── cube3d.c/.h           ← 3D 立方体投影、命中区、惯性（含可配置 params）
 │   ├── watchface.c/.h        ← 点阵字形、百分比/电量格式化
 │   ├── dial_layout.c/.h      ← 圆屏极坐标切割模型（环带/分格/命中/排版可用性，纯几何）
+│   ├── usage_model.c/.h      ← Codex 用量数据模型（JSON 解析/倒计时文案/seqlock 共享存储）
 │   └── video_source.c/.h     ← TF 卡 RGB565 文件读取状态机（与 LVGL 无关）
 │
 ├── common/                   ← 跨屏公共设施（仍依赖 LVGL）
@@ -126,7 +127,8 @@ ESP32-Pulsar/
 ├── hal/                      ← 硬件抽象层（唯一允许直接操作外设的地方）
 │   ├── pincfg.h              ← 全部 GPIO 宏定义（只放引脚，不放业务常量）
 │   ├── display.cpp/.h        ← 屏/触摸/LVGL 驱动初始化；只保留"执行"，决策逻辑在 core/
-│   └── sd_card.cpp/.h        ← SD 卡（SDMMC 4-bit）挂载，挂载点由 SD_CARD_MOUNT_POINT 定义
+│   ├── sd_card.cpp/.h        ← SD 卡（SDMMC 4-bit）挂载，挂载点由 SD_CARD_MOUNT_POINT 定义
+│   └── ble_usage.cpp/.h      ← BLE GATT server：接收电脑端写入的用量 JSON → core/usage_model
 │
 ├── screens/                  ← 每屏一个 .c/.h 对 + 一个 *_layout.h 常量头
 │   ├── screen_dashboard.c/.h + dashboard_layout.h
@@ -153,6 +155,7 @@ ESP32-Pulsar/
 │   ├── reference/            ← 重构前实现的逐字副本，供差分测试比对（不计覆盖率）
 │   └── tools/                ← 覆盖率汇总脚本（CI 门禁用）
 │
+├── client/                   ← 电脑端 BLE 客户端（Python + bleak），取 Codex 用量并写入设备
 ├── assets/                   ← 设计原图（PNG），不编译进固件
 ├── example/                  ← 效果截图（dark/light 主题对比图）
 ├── test/                     ← 测试用真机照片
@@ -191,6 +194,7 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 | 存储 | TF 卡（SDMMC 4-bit，最高 40 MHz） |
 | 音频输出 | I2S DAC |
 | 音频输入 | I2S MEMS 麦克风 |
+| 无线 | BLE（Bluedroid GATT server，广播名 `ESP32-Pulsar`） |
 | PlatformIO platform | pioarduino `53.03.11`（Arduino ESP32 3.1.1 / IDF 5.3） |
 | 上传波特率 | 921600 |
 | 串口波特率 | 115200 |
@@ -221,6 +225,22 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 | 麦克风 SCK | 42 |
 
 > 宏定义见 `hal/pincfg.h`；屏幕尺寸/动画时长/路径/帧率等**非引脚**常量在 `core/app_config.h`。
+
+### BLE 用量链路（Codex 表盘）
+
+```
+电脑: client/pulsar_ble_client.py
+  ~/.codex/auth.json → GET chatgpt.com/backend-api/api/codex/usage
+        │ BLE write（GATT 特征值 0b1e5a11-…）
+        ▼
+设备: hal/ble_usage.cpp (onWrite) → core/usage_model.c usage_parse_json()
+        → usage_store_set()（seqlock）→ screens/screen_codex_usage.c 每秒重绘
+```
+
+- 广播名 `ESP32-Pulsar`；服务 `0b1e5a10-…`、写入 `0b1e5a11-…`、状态 `0b1e5a12-…`，两端必须一致。
+- JSON 键（`cu/ci/wu/wi/wl/pl/cc/un/rl`）定义在 `core/usage_model.h`，改键名要同步 `client/`。
+- `~/.codex/auth.json` 是 OAuth 凭据，**只在电脑端读取，绝不写进固件**。
+- 无数据或超过 `WF_USAGE_STALE_MS`（90s）时，屏幕回落到 `Waiting for BLE` / `NO DATA`。
 
 ---
 
