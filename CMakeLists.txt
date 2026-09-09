@@ -2,12 +2,7 @@
 FILE(GLOB CORE_SOURCES core/*.c)
 FILE(GLOB COMMON_SOURCES common/*.c)
 
-SET(SOURCES ui_Screen1.c
-    ui_Screen2.c
-    ui_Screen3.c
-    ui_Screen4.c
-    ui.c
-    ui_comp_hook.c
+SET(SOURCES ui.c
     ui_helpers.c
     ui_img_1539399133.c)
 

@@ -44,7 +44,6 @@ A multi-purpose **ESP32-S3** display badge: a **ST77916 QSPI 360×360 round disp
 ```
 ESP32-Pulsar/
 ├── main.cpp                     # Arduino setup() / loop()
-├── ESP32-Pulsar.ino             # Arduino IDE stub
 ├── platformio.ini               # PlatformIO build config
 ├── lv_conf.h                    # LVGL feature flags
 ├── CMakeLists.txt               # Optional ESP-IDF/CMake project metadata
@@ -185,17 +184,6 @@ pip install platformio
 
 > The project uses the [pioarduino](https://github.com/pioarduino/platform-espressif32) platform to provide **Arduino ESP32 3.1.1 / IDF 5.3**, which is required by ESP32_Display_Panel v1.x. The official `espressif32` PlatformIO platform ships IDF 4.x and is incompatible.
 
-### Arduino IDE (optional)
-
-Install **Arduino ESP32 core ≥ 3.1.0** via Boards Manager, then add these libraries via Library Manager:
-
-| Library | Version |
-|---------|---------|
-| ESP32_Display_Panel | v1.0.4 |
-| ESP32_IO_Expander | v1.1.0 |
-| esp-lib-utils | v0.2.0 |
-| lvgl | 8.3.11 |
-
 ---
 
 ## Build & Flash
@@ -244,13 +232,6 @@ esptool.py --chip esp32s3 --port /dev/ttyUSB0 chip_id
 # Erase entire flash
 esptool.py --chip esp32s3 --port /dev/ttyUSB0 erase_flash
 ```
-
-### Arduino IDE
-
-1. Open `ESP32-Pulsar.ino` in Arduino IDE 2.x.
-2. Select board: **ESP32S3 Dev Module**.
-3. Set **USB CDC On Boot** → **Enabled**.
-4. Click **Upload**.
 
 ---
 
