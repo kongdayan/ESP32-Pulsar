@@ -30,7 +30,15 @@ MT_TEST(test_json_parse_int)
     p = "x";  CHECK_FALSE(json_parse_int(&p, &v));
     p = "-";  CHECK_FALSE(json_parse_int(&p, &v));
     p = "";   CHECK_FALSE(json_parse_int(&p, &v));
-    p = "9999999999"; CHECK_FALSE(json_parse_int(&p, &v));   /* 溢出 int */
+    p = "2147483647"; CHECK(json_parse_int(&p, &v)); CHECK_EQ(v, 2147483647);
+    const int int_min = -2147483647 - 1;
+    p = "-2147483648"; CHECK(json_parse_int(&p, &v)); CHECK_EQ(v, int_min);
+
+    /* INT32 边界：32 位 long 平台会回绕，必须拒绝 */
+    p = "2147483648";  CHECK_FALSE(json_parse_int(&p, &v));
+    p = "21474836471"; CHECK_FALSE(json_parse_int(&p, &v));
+    p = "4294967296";  CHECK_FALSE(json_parse_int(&p, &v));
+    p = "9999999999";  CHECK_FALSE(json_parse_int(&p, &v));
 }
 
 MT_TEST(test_json_parse_str)

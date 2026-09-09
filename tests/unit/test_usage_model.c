@@ -8,8 +8,6 @@
 
 #include "usage_model.h"
 
-#define EPS 1e-6
-
 /* ── 默认值 / 存储 ────────────────────────────────────────────────────────── */
 
 MT_TEST(test_usage_defaults)
@@ -83,6 +81,31 @@ MT_TEST(test_usage_store_isolates_providers)
     /* 非法 provider 不崩、不命中 */
     CHECK_FALSE(usage_store_get(USAGE_PROVIDER_COUNT, &got));
     CHECK_FALSE(usage_store_get((usage_provider_t)-1, &got));
+
+    usage_store_reset();
+}
+
+MT_TEST(test_usage_store_drops_invalid_provider)
+{
+    usage_store_reset();
+
+    usage_data_t good;
+    usage_data_defaults(&good);
+    good.provider = USAGE_PROVIDER_CODEX;
+    good.current_used_pct = 33;
+    good.valid = true;
+    usage_store_set(&good);
+
+    usage_data_t bad;
+    usage_data_defaults(&bad);
+    bad.provider = (usage_provider_t)99;
+    bad.current_used_pct = 77;
+    bad.valid = true;
+    usage_store_set(&bad);   /* 非法 provider 应被丢弃，不覆盖 Codex 槽 */
+
+    usage_data_t got;
+    CHECK_TRUE(usage_store_get(USAGE_PROVIDER_CODEX, &got));
+    CHECK_EQ(got.current_used_pct, 33);
 
     usage_store_reset();
 }

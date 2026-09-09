@@ -37,8 +37,6 @@ extern "C" {
 #define USAGE_KEY_MAX          8
 #define USAGE_LABEL_MAX        24
 #define USAGE_RESET_TEXT_MAX   40
-#define USAGE_TITLE_MAX        12
-#define USAGE_PROVIDER_KEY_MAX 12
 
 #define USAGE_SEC_PER_MINUTE   60
 #define USAGE_SEC_PER_HOUR     (60 * USAGE_SEC_PER_MINUTE)
@@ -70,7 +68,6 @@ typedef enum {
 typedef struct {
     const char *key;      /* 机器名："codex" */
     const char *title;    /* 屏幕标题："CODEX" */
-    uint32_t    accent;   /* 该 provider 的强调色（0xRRGGBB，屏幕可选） */
 } usage_provider_info_t;
 
 extern const usage_provider_info_t usage_providers[USAGE_PROVIDER_COUNT];

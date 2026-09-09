@@ -16,21 +16,21 @@
 #define USAGE_TEXT_RESET_ABS    "Resets %s"
 #define USAGE_TEXT_RESET_IN     "Resets in %dd %dh"
 #define USAGE_TEXT_RESET_CLOCK  "Resets in %02d:%02d"
-#define USAGE_TEXT_UNKNOWN_PLAN "?"
+#define USAGE_TEXT_UNKNOWN      "?"
 #define USAGE_TEXT_UNKNOWN_PROV "unknown"
 
 /* ── provider 表（加新服务：补枚举 + 这里补一行） ─────────────────────────── */
 const usage_provider_info_t usage_providers[USAGE_PROVIDER_COUNT] = {
-    [USAGE_PROVIDER_CODEX]  = { "codex",  "CODEX",  0x1F7AFFu },
-    [USAGE_PROVIDER_CLAUDE] = { "claude", "CLAUDE", 0xD97757u },
-    [USAGE_PROVIDER_NVIDIA] = { "nvidia", "NVIDIA", 0x76B900u },
-    [USAGE_PROVIDER_AMD]    = { "amd",    "AMD",    0xED1C24u },
-    [USAGE_PROVIDER_GLM]    = { "glm",    "GLM",    0x2E6BFFu },
+    [USAGE_PROVIDER_CODEX]  = { "codex",  "CODEX"  },
+    [USAGE_PROVIDER_CLAUDE] = { "claude", "CLAUDE" },
+    [USAGE_PROVIDER_NVIDIA] = { "nvidia", "NVIDIA" },
+    [USAGE_PROVIDER_AMD]    = { "amd",    "AMD"    },
+    [USAGE_PROVIDER_GLM]    = { "glm",    "GLM"    },
 };
 
 bool usage_provider_is_valid(usage_provider_t p)
 {
-    return p >= 0 && p < USAGE_PROVIDER_COUNT;
+    return (unsigned)p < (unsigned)USAGE_PROVIDER_COUNT;
 }
 
 const char *usage_provider_key(usage_provider_t p)
@@ -40,7 +40,7 @@ const char *usage_provider_key(usage_provider_t p)
 
 const char *usage_provider_title(usage_provider_t p)
 {
-    return usage_provider_is_valid(p) ? usage_providers[p].title : USAGE_TEXT_UNKNOWN_PLAN;
+    return usage_provider_is_valid(p) ? usage_providers[p].title : USAGE_TEXT_UNKNOWN;
 }
 
 /* ── 共享存储（每个 provider 一个 seqlock 槽） ────────────────────────────── */
@@ -58,10 +58,9 @@ void usage_data_defaults(usage_data_t *d)
 
 void usage_store_set(const usage_data_t *d)
 {
-    if (d == NULL) return;
-    const usage_provider_t p = usage_provider_is_valid(d->provider)
-                                   ? d->provider
-                                   : USAGE_PROVIDER_CODEX;
+    /* 非法 provider 直接丢弃，不落槽（避免误写覆盖 Codex） */
+    if (d == NULL || !usage_provider_is_valid(d->provider)) return;
+    const usage_provider_t p = d->provider;
     s_seq[p]++;                 /* 奇数 = 写入中 */
     __sync_synchronize();
     s_slots[p] = *d;
@@ -172,11 +171,11 @@ bool usage_parse_json(const char *json, usage_data_t *out)
         p = json_skip_ws(p);
 
         if (*p == '"') {
-            char val[USAGE_LABEL_MAX];
-            if (!json_parse_str(&p, val, sizeof(val))) return false;
             if (strcmp(key, USAGE_KEY_WEEKLY_LABEL) == 0) {
-                memcpy(out->weekly_reset_label, val, sizeof(out->weekly_reset_label));
-                out->weekly_reset_label[sizeof(out->weekly_reset_label) - 1u] = '\0';
+                if (!json_parse_str(&p, out->weekly_reset_label,
+                                    sizeof(out->weekly_reset_label))) return false;
+            } else {
+                if (!json_parse_str(&p, NULL, 0)) return false;
             }
         } else {
             int v = 0;
@@ -238,6 +237,6 @@ const char *usage_plan_name(usage_plan_t plan)
     case USAGE_PLAN_PRO:        return "PRO";
     case USAGE_PLAN_TEAM:       return "TEAM";
     case USAGE_PLAN_ENTERPRISE: return "ENT";
-    default:                    return USAGE_TEXT_UNKNOWN_PLAN;
+    default:                    return USAGE_TEXT_UNKNOWN;
     }
 }

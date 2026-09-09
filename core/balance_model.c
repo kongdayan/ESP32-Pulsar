@@ -98,11 +98,10 @@ bool balance_parse_json(const char *json, balance_data_t *out)
         p = json_skip_ws(p);
 
         if (*p == '"') {
-            char val[BALANCE_CURRENCY_MAX];
-            if (!json_parse_str(&p, val, sizeof(val))) return false;
             if (strcmp(key, BALANCE_KEY_CURRENCY) == 0) {
-                memcpy(out->currency, val, sizeof(out->currency));
-                out->currency[sizeof(out->currency) - 1u] = '\0';
+                if (!json_parse_str(&p, out->currency, sizeof(out->currency))) return false;
+            } else {
+                if (!json_parse_str(&p, NULL, 0)) return false;
             }
         } else {
             int v = 0;
@@ -121,9 +120,11 @@ int balance_format_amount(int cents, char *out, size_t n)
 {
     if (out == NULL || n == 0u) return 0;
     const bool neg = cents < 0;
-    const long v = neg ? -(long)cents : (long)cents;
-    return snprintf(out, n, "%s%ld.%02ld", neg ? BALANCE_TEXT_NEGATIVE : "",
-                    v / BALANCE_CENTS_PER_UNIT, v % BALANCE_CENTS_PER_UNIT);
+    /* 用 64 位取绝对值，避免 INT_MIN 在 32 位平台上取负溢出 */
+    const unsigned long v = neg ? (unsigned long)(-(int64_t)cents) : (unsigned long)cents;
+    return snprintf(out, n, "%s%lu.%02lu", neg ? BALANCE_TEXT_NEGATIVE : "",
+                    v / (unsigned long)BALANCE_CENTS_PER_UNIT,
+                    v % (unsigned long)BALANCE_CENTS_PER_UNIT);
 }
 
 bool balance_is_stale(const balance_data_t *d, uint32_t now_ms, uint32_t timeout_ms)

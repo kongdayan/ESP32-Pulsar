@@ -17,13 +17,19 @@ bool json_parse_int(const char **pp, int *out)
     }
     if (*p < '0' || *p > '9') return false;
 
-    long v = 0;
+    /* 用无符号累加 + 预判，避免 long 在 32 位平台（ESP32 ILP32）上溢出 */
+    const uint32_t limit = neg ? (uint32_t)JSON_MIN_INT_MAX + 1u
+                               : (uint32_t)JSON_MIN_INT_MAX;
+    uint32_t v = 0;
     while (*p >= '0' && *p <= '9') {
-        v = v * 10 + (*p - '0');
-        if (v > JSON_MIN_INT_MAX) return false;
+        const uint32_t d = (uint32_t)(*p - '0');
+        if (v > (limit - d) / 10u) return false;
+        v = v * 10u + d;
         p++;
     }
-    if (out != NULL) *out = (int)(neg ? -v : v);
+    if (out != NULL) {
+        *out = neg ? (int)(0u - v) : (int)v;   /* -2147483648 也能正确表示 */
+    }
     *pp = p;
     return true;
 }
@@ -42,7 +48,7 @@ bool json_parse_str(const char **pp, char *out, size_t n)
     }
     if (*p != '"') return false;
     p++;
-    if (out != NULL) out[i] = '\0';
+    if (out != NULL && n > 0u) out[i] = '\0';
     *pp = p;
     return true;
 }
