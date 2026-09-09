@@ -20,6 +20,10 @@ void host_sd_card_set_mounted(bool mounted);
 void host_sd_card_set_size_bytes(uint64_t bytes);
 int host_sd_card_init_calls(void);
 
+void host_ble_usage_reset(void);
+int host_ble_usage_init_calls(void);
+void host_ble_usage_set_connected(bool connected);
+
 void host_arduino_reset(void);
 long host_arduino_serial_baud(void);
 uint32_t host_arduino_delay_total_ms(void);

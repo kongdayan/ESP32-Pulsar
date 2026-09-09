@@ -3,6 +3,7 @@
 #include <lvgl.h>
 
 #include "app_config.h"
+#include "ble_usage.h"
 #include "display.h"
 #include "sd_card.h"
 #include "ui.h"
@@ -13,6 +14,7 @@ void setup()
   Serial.begin(APP_SERIAL_BAUD);
   display_init();
   sd_card_init();
+  ble_usage_init();
   ui_init();
 }
 

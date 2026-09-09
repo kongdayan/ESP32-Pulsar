@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "Arduino.h"
+#include "ble_usage.h"
 #include "display.h"
 #include "host_tick.h"
 #include "sd_card.h"
@@ -91,6 +92,32 @@ void host_sd_card_reset(void)
 void host_sd_card_set_mounted(bool mounted) { s_sd.mounted = mounted; }
 void host_sd_card_set_size_bytes(uint64_t bytes) { s_sd.size_bytes = bytes; }
 int host_sd_card_init_calls(void) { return s_sd.init_calls; }
+
+/* ── ble_usage ───────────────────────────────────────────────────────────── */
+
+static struct {
+    int  init_calls;
+    bool connected;
+} s_ble;
+
+void ble_usage_init(void)
+{
+    s_ble.init_calls++;
+}
+
+bool ble_usage_is_connected(void)
+{
+    return s_ble.connected;
+}
+
+void host_ble_usage_reset(void)
+{
+    s_ble.init_calls = 0;
+    s_ble.connected = false;
+}
+
+int host_ble_usage_init_calls(void) { return s_ble.init_calls; }
+void host_ble_usage_set_connected(bool connected) { s_ble.connected = connected; }
 
 /* ── Arduino 记录 ────────────────────────────────────────────────────────── */
 

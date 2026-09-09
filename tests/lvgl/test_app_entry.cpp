@@ -27,6 +27,7 @@ MT_TEST(test_setup_wires_boot_in_legacy_order)
     ensure_host();
     host_display_reset();
     host_sd_card_reset();
+    host_ble_usage_reset();
     host_arduino_reset();
 
     /* 开机首屏若是懒加载遗留的，先清掉，保证 ui_init 真的建了屏 */
@@ -42,6 +43,7 @@ MT_TEST(test_setup_wires_boot_in_legacy_order)
     CHECK_EQ(host_arduino_serial_baud(), APP_SERIAL_BAUD);
     CHECK_EQ(host_display_init_calls(), 1);
     CHECK_EQ(host_sd_card_init_calls(), 1);
+    CHECK_EQ(host_ble_usage_init_calls(), 1);
     CHECK(*first != NULL);
     CHECK_EQ(lv_host_active_screen(), *first);
 }
