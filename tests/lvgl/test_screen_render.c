@@ -25,6 +25,7 @@ static const screen_entry_t k_screens[] = {
     { "agent",       screen_agent_get_ptr,       screen_agent_init       },
     { "3dmodel",     screen_3dmodel_get_ptr,     screen_3dmodel_init     },
     { "codex_usage", screen_codex_usage_get_ptr, screen_codex_usage_init },
+    { "balance",     screen_balance_get_ptr,     screen_balance_init     },
 };
 
 #define SCREEN_COUNT ((int)(sizeof(k_screens) / sizeof(k_screens[0])))
