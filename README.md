@@ -135,6 +135,7 @@ writes a compact JSON payload to characteristic `0b1e5a11-…`:
 
 ```bash
 cd client && pip install -r requirements.txt
+export DEEPSEEK_API_KEY=sk-...         # optional, for the balance screen
 python3 pulsar_ble_client.py --dry-run   # verify the data first, no BLE
 python3 pulsar_ble_client.py             # push every 60 s
 ```
@@ -142,6 +143,16 @@ python3 pulsar_ble_client.py             # push every 60 s
 The firmware parses it in `core/usage_model.c`; the screen refreshes every second.
 With no data (or older than 90 s) it falls back to `Waiting for BLE` / `NO DATA`.
 See [`client/README.md`](client/README.md) for the payload schema and troubleshooting.
+
+#### DeepSeek Balance (real data over BLE)
+
+A second screen (`balance`) shows the DeepSeek account balance: total, topped-up and
+granted amounts, plus an availability flag. The same client fetches it from
+`GET api.deepseek.com/user/balance` (key from `DEEPSEEK_API_KEY`) and writes a
+compact JSON payload to characteristic `0b1e5a13-…`; amounts travel as integer
+cents. The firmware model is `core/balance_model.c`.
+
+Swipe right from the Codex watch face to reach it.
 
 ---
 
