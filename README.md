@@ -1,8 +1,8 @@
-# ST77916 LVGL Demo
+# ESP32-Pulsar
 
-An embedded UI demo for the **ESP32-S3** driving a **ST77916 QSPI 360×360 round display** with **CST816S capacitive touch**, built with [LVGL 8.3](https://lvgl.io) and [ESP32_Display_Panel v1.0.4](https://github.com/esp-arduino-libs/ESP32_Display_Panel).
+A multi-purpose **ESP32-S3** display badge: a **ST77916 QSPI 360×360 round display** with **CST816S capacitive touch**, built with [LVGL 8.3](https://lvgl.io) and [ESP32_Display_Panel v1.0.4](https://github.com/esp-arduino-libs/ESP32_Display_Panel).
 
-![Build](https://github.com/kongdayan/ST77916_LVGL_DEMO/actions/workflows/build.yml/badge.svg)
+![Build](https://github.com/kongdayan/ESP32-Pulsar/actions/workflows/build.yml/badge.svg)
 
 ---
 
@@ -38,9 +38,9 @@ An embedded UI demo for the **ESP32-S3** driving a **ST77916 QSPI 360×360 round
 ## Project Structure
 
 ```
-ST77916_LVGL_DEMO/
+ESP32-Pulsar/
 ├── main.cpp                     # Arduino setup() / loop()
-├── ST77916_LVGL_DEMO.ino        # Arduino IDE stub
+├── ESP32-Pulsar.ino             # Arduino IDE stub
 ├── platformio.ini               # PlatformIO build config
 ├── lv_conf.h                    # LVGL feature flags
 ├── CMakeLists.txt               # Optional ESP-IDF/CMake project metadata
@@ -149,8 +149,8 @@ Install **Arduino ESP32 core ≥ 3.1.0** via Boards Manager, then add these libr
 ### PlatformIO
 
 ```bash
-git clone https://github.com/kongdayan/ST77916_LVGL_DEMO.git
-cd ST77916_LVGL_DEMO
+git clone https://github.com/kongdayan/ESP32-Pulsar.git
+cd ESP32-Pulsar
 
 # Compile only
 pio run
@@ -193,7 +193,7 @@ esptool.py --chip esp32s3 --port /dev/ttyUSB0 erase_flash
 
 ### Arduino IDE
 
-1. Open `ST77916_LVGL_DEMO.ino` in Arduino IDE 2.x.
+1. Open `ESP32-Pulsar.ino` in Arduino IDE 2.x.
 2. Select board: **ESP32S3 Dev Module**.
 3. Set **USB CDC On Boot** → **Enabled**.
 4. Click **Upload**.

@@ -60,7 +60,7 @@ core/*.c  common/*.c  screens/*.c  ui/ui.c  ui/ui_helpers.c  main.cpp
 | `hal/sd_card.cpp` | 依赖 SD_MMC 外设 | 挂载状态改为桩注入；文件解析/播放状态机全在 `core/video_source.c`，100% 行覆盖 |
 | `ui/ui_img_*.c`、`ui/` 其余生成文件 | SquareLine 生成的资源表与壳 | 由 `test_screen_render.c` 间接验证（图片能画出像素） |
 | LVGL 库本体（`.pio/libdeps`） | 第三方 | 以 `-w` 编译、不插桩 |
-| `tests/` 自身、`ST77916_LVGL_DEMO.ino` | 测试代码 / Arduino IDE 空壳 | — |
+| `tests/` 自身、`ESP32-Pulsar.ino` | 测试代码 / Arduino IDE 空壳 | — |
 
 结果（`make check-coverage` 会打印同一份数字）：
 

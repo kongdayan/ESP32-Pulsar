@@ -1,4 +1,4 @@
-# Agent Instructions — ST77916 LVGL Demo
+# Agent Instructions — ESP32-Pulsar
 
 ESP32-S3 嵌入式固件项目，使用 **PlatformIO + Arduino + LVGL 8.3**。
 目标硬件：ST77916 QSPI 圆形屏（360×360）+ CST816S 电容触摸 + TF 卡 + I2S 音频/麦克风。
@@ -101,11 +101,11 @@ ffmpeg -i input.mp4 \
 ## 四、项目目录结构
 
 ```
-ST77916_LVGL_DEMO/
+ESP32-Pulsar/
 ├── main.cpp                  ← Arduino 入口：只做装配（setup 顺序 / loop 心跳）
 ├── platformio.ini            ← 构建配置（平台、库依赖、编译 filter）
 ├── lv_conf.h                 ← LVGL 功能开关（只开启项目用到的控件）
-├── ST77916_LVGL_DEMO.ino     ← Arduino IDE 兼容入口（不用于 PlatformIO 构建）
+├── ESP32-Pulsar.ino          ← Arduino IDE 兼容入口（不用于 PlatformIO 构建）
 │
 ├── core/                     ← 纯逻辑层：不依赖 LVGL / Arduino / HAL，可主机单测
 │   ├── app_config.h          ← 全局常量：屏幕尺寸、动画时长、路径、主题角色色
