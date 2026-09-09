@@ -22,5 +22,9 @@ tests/build/
 # 电脑端 BLE 客户端的虚拟环境
 client/.venv/
 
+# Python 缓存
+__pycache__/
+*.pyc
+
 # LLVM 覆盖率产物（正常路径下写入 tests/build/prof/，未设 LLVM_PROFILE_FILE 时会掉到 CWD）
 *.profraw
