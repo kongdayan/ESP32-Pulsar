@@ -8,10 +8,12 @@
 #include "codex_usage_layout.h"
 #include "ui_math.h"
 #include "ui_theme.h"
+#include "usage_model.h"
 #include "watchface.h"
 
 static lv_obj_t *scr   = NULL;
 static lv_obj_t *panel = NULL;
+static lv_timer_t *refresh_timer = NULL;
 static ui_theme_mode_t theme = UI_THEME_DARK;
 
 static uint32_t role_color(ui_color_role_t role)
@@ -229,6 +231,25 @@ static void on_draw(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_DRAW_POST_BEGIN) return;
     lv_draw_ctx_t *dc = lv_event_get_draw_ctx(e);
 
+    /* 真实数据来自 BLE 写入的共享存储；没有/过期时回退到占位文案 */
+    const uint32_t now_ms = (uint32_t)lv_tick_get();
+    usage_data_t usage;
+    const bool live = usage_store_get(&usage) && usage.valid &&
+                      !usage_is_stale(&usage, now_ms, WF_USAGE_STALE_MS);
+    const int current_pct = live ? usage.current_used_pct : 0;
+    const int weekly_pct  = live ? usage.weekly_used_pct : 0;
+
+    char current_reset[USAGE_RESET_TEXT_MAX];
+    char weekly_reset[USAGE_RESET_TEXT_MAX];
+    if (live) {
+        usage_format_countdown(usage_countdown_s(&usage, now_ms),
+                               current_reset, sizeof(current_reset));
+        usage_format_weekly(usage.weekly_reset_label, weekly_reset, sizeof(weekly_reset));
+    } else {
+        snprintf(current_reset, sizeof(current_reset), "%s", WF_TEXT_WAITING);
+        snprintf(weekly_reset, sizeof(weekly_reset), "%s", WF_TEXT_WAITING);
+    }
+
     draw_rect(dc, 0, 0, APP_SCREEN_MAX_COORD, APP_SCREEN_MAX_COORD, LV_RADIUS_CIRCLE,
               role_color(UI_ROLE_BG), LV_OPA_COVER);
 
@@ -256,27 +277,41 @@ static void on_draw(lv_event_t *e)
 
     draw_dot_text(dc, WF_TEXT_CURRENT, WF_SECTION_LABEL_X, WF_CURRENT_LABEL_Y,
                   WF_SECTION_LABEL_STEP, WF_SECTION_DOT_R, role_color(UI_ROLE_BLUE), LV_OPA_COVER);
-    draw_right_percent(dc, WF_CURRENT_PCT, WF_PERCENT_RIGHT_X, WF_CURRENT_PERCENT_Y,
+    draw_right_percent(dc, current_pct, WF_PERCENT_RIGHT_X, WF_CURRENT_PERCENT_Y,
                        role_color(UI_ROLE_BLUE), LV_OPA_COVER);
     draw_progress_dots(dc, WF_PROGRESS_X, WF_CURRENT_PROGRESS_Y, WF_PROGRESS_DOTS,
-                       wf_progress_steps(WF_PROGRESS_DOTS, WF_CURRENT_PCT), WF_PROGRESS_ROWS,
+                       wf_progress_steps(WF_PROGRESS_DOTS, current_pct), WF_PROGRESS_ROWS,
                        role_color(UI_ROLE_BLUE), role_color(UI_ROLE_BLUE_DIM));
-    draw_centered_reset(dc, WF_TEXT_RESET_DAILY, WF_RESET_DAILY_Y);
+    draw_centered_reset(dc, current_reset, WF_RESET_DAILY_Y);
 
     draw_dot_text(dc, WF_TEXT_WEEKLY, WF_SECTION_LABEL_X, WF_WEEKLY_LABEL_Y,
                   WF_SECTION_LABEL_STEP, WF_SECTION_DOT_R, role_color(UI_ROLE_GREEN), LV_OPA_COVER);
-    draw_right_percent(dc, WF_WEEKLY_PCT, WF_PERCENT_RIGHT_X, WF_WEEKLY_PERCENT_Y,
+    draw_right_percent(dc, weekly_pct, WF_PERCENT_RIGHT_X, WF_WEEKLY_PERCENT_Y,
                        role_color(UI_ROLE_GREEN), LV_OPA_COVER);
     draw_progress_dots(dc, WF_PROGRESS_X, WF_WEEKLY_PROGRESS_Y, WF_PROGRESS_DOTS,
-                       wf_progress_steps(WF_PROGRESS_DOTS, WF_WEEKLY_PCT), 1,
+                       wf_progress_steps(WF_PROGRESS_DOTS, weekly_pct), 1,
                        role_color(UI_ROLE_GREEN), role_color(UI_ROLE_GREEN_DIM));
-    draw_centered_reset(dc, WF_TEXT_RESET_WEEKLY, WF_RESET_WEEKLY_Y);
+    draw_centered_reset(dc, weekly_reset, WF_RESET_WEEKLY_Y);
 
     draw_dot(dc, WF_AGENT_DOT_X, WF_AGENT_DOT_Y, WF_AGENT_DOT_R, role_color(UI_ROLE_GREEN),
              LV_OPA_COVER);
-    draw_dot_text(dc, WF_TEXT_AGENT, WF_AGENT_TEXT_X, WF_AGENT_TEXT_Y,
+    draw_dot_text(dc, live ? WF_TEXT_AGENT : WF_TEXT_OFFLINE, WF_AGENT_TEXT_X, WF_AGENT_TEXT_Y,
                   WF_AGENT_TEXT_STEP, WF_AGENT_TEXT_DOT_R, role_color(UI_ROLE_GREEN), LV_OPA_COVER);
 }
+
+/* ── 刷新定时器：每秒重绘，让倒计时走动 / 数据过期后切回占位 ─────────────── */
+
+static void on_refresh(lv_timer_t *timer)
+{
+    (void)timer;
+    if (panel != NULL) lv_obj_invalidate(panel);
+}
+
+static const ui_timer_binding_t k_refresh_binding = {
+    .cb = on_refresh,
+    .period_ms = WF_REFRESH_MS,
+    .handle = &refresh_timer,
+};
 
 void screen_codex_usage_init(void)
 {
@@ -288,6 +323,8 @@ void screen_codex_usage_init(void)
 
     panel = ui_fullscreen_layer_create(scr, true);
     lv_obj_add_event_cb(panel, on_draw, LV_EVENT_ALL, NULL);
+
+    ui_timer_attach(scr, &k_refresh_binding);
 }
 
 lv_obj_t **screen_codex_usage_get_ptr(void) { return &scr; }

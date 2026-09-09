@@ -14,11 +14,13 @@
 #include <unistd.h>
 
 #include "app_config.h"
+#include "codex_usage_layout.h"
 #include "esp_heap_caps.h"
 #include "lv_host.h"
 #include "sd_card.h"
 #include "ui.h"
 #include "ui_screen.h"
+#include "usage_model.h"
 #include "video_layout.h"
 #include "video_source.h"
 
@@ -343,6 +345,45 @@ MT_TEST(test_codex_swipe_up_toggles_theme)
     CHECK_EQ(fb_checksum(), dark_sum);
 
     release_slot(slot);
+}
+
+MT_TEST(test_codex_usage_renders_live_data)
+{
+    ensure_host();
+    settle_input();
+
+    usage_data_t data;
+    usage_data_defaults(&data);
+    data.current_used_pct = 27;
+    data.weekly_used_pct = 73;
+    data.current_resets_in = 2 * USAGE_SEC_PER_HOUR;
+    data.weekly_resets_in = 3 * USAGE_SEC_PER_DAY;
+    snprintf(data.weekly_reset_label, sizeof(data.weekly_reset_label), "16:14 on 18 May");
+    data.plan = USAGE_PLAN_PRO;
+    data.has_credits = true;
+    data.valid = true;
+    data.rx_ms = (uint32_t)lv_tick_get();
+    usage_store_set(&data);
+
+    screen_codex_usage_init();
+    lv_obj_t **slot = screen_codex_usage_get_ptr();
+    CHECK(*slot != NULL);
+    if (*slot == NULL) {
+        usage_store_reset();
+        return;
+    }
+
+    lv_scr_load(*slot);
+    for (int i = 0; i < 3; i++) render_a_bit();
+    CHECK(lv_host_non_black_pixels() >= 200u);
+
+    /* 数据过期后回落到占位文案，屏幕仍必须能画 */
+    lv_host_advance_ms(WF_USAGE_STALE_MS + 1000u);
+    render_a_bit();
+    CHECK(lv_host_non_black_pixels() >= 200u);
+
+    release_slot(slot);
+    usage_store_reset();
 }
 
 /* ── 公共控件工厂的两条分支 ───────────────────────────────────────────────── */

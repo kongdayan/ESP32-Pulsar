@@ -8,18 +8,19 @@
 #include "app_config.h"
 #include "ui_theme.h"
 
-/* ── 展示数据（真机后续可由网络注入） ─────────────────────────────────────── */
-#define WF_CURRENT_PCT       27
-#define WF_WEEKLY_PCT        73
-#define WF_BATTERY_PCT       100
+/* ── 数据来源 / 刷新 ──────────────────────────────────────────────────────── */
+/* 真实用量由 BLE 写入（hal/ble_usage.cpp → core/usage_model）。
+ * 这里只放“没数据时”的占位文案与刷新/过期阈值，不再有 mock 百分比。 */
+#define WF_REFRESH_MS          1000u              /* 1s 重绘：倒计时会走动 */
+#define WF_USAGE_STALE_MS      (90u * 1000u)      /* 超过 90s 未更新视为断链 */
+#define WF_TEXT_WAITING        "Waiting for BLE"
+#define WF_TEXT_OFFLINE        "NO DATA"
 
 /* ── 文本内容 ─────────────────────────────────────────────────────────────── */
 #define WF_TEXT_CODEX          "CODEX"
 #define WF_TEXT_CURRENT        "CURRENT"
 #define WF_TEXT_WEEKLY         "WEEKLY"
 #define WF_TEXT_PERCENT        "%"
-#define WF_TEXT_RESET_DAILY    "Resets in 21:59"
-#define WF_TEXT_RESET_WEEKLY   "Resets 16:14 on 18 May"
 #define WF_TEXT_AGENT          "AGENT ACTIVE"
 
 /* ── 外圈 ─────────────────────────────────────────────────────────────────── */
