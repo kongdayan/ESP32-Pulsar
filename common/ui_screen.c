@@ -22,7 +22,9 @@ static const ui_screen_ref_t k_screen_refs[NAV_SCREEN_COUNT] = {
     [NAV_SCREEN_ABOUT]       = { screen_about_get_ptr,       screen_about_init       },
     [NAV_SCREEN_AGENT]       = { screen_agent_get_ptr,       screen_agent_init       },
     [NAV_SCREEN_MODEL3D]     = { screen_3dmodel_get_ptr,     screen_3dmodel_init     },
-    [NAV_SCREEN_CODEX_USAGE] = { screen_codex_usage_get_ptr, screen_codex_usage_init },
+    [NAV_SCREEN_CODEX_USAGE]  = { screen_codex_usage_get_ptr,  screen_codex_usage_init  },
+    [NAV_SCREEN_CLAUDE_USAGE] = { screen_claude_usage_get_ptr, screen_claude_usage_init },
+    [NAV_SCREEN_BALANCE]      = { screen_balance_get_ptr,      screen_balance_init      },
 };
 
 static lv_scr_load_anim_t nav_load_anim(nav_dir_t dir)

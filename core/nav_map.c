@@ -23,7 +23,9 @@ static const nav_entry_t k_nav_table[NAV_SCREEN_COUNT] = {
     [NAV_SCREEN_ABOUT]       = { NAV_JUMP(NAV_SCREEN_CODEX_USAGE),  NAV_MOVE(NAV_SCREEN_VIDEO),        "about"       },
     [NAV_SCREEN_AGENT]       = { NAV_MOVE(NAV_SCREEN_MODEL3D),      NAV_MOVE(NAV_SCREEN_ABOUT),        "agent"       },
     [NAV_SCREEN_MODEL3D]     = { NAV_MOVE(NAV_SCREEN_CODEX_USAGE),  NAV_MOVE(NAV_SCREEN_ABOUT),        "3dmodel"     },
-    [NAV_SCREEN_CODEX_USAGE] = { NAV_JUMP(NAV_SCREEN_ABOUT),        NAV_JUMP(NAV_SCREEN_ABOUT),        "codex_usage" },
+    [NAV_SCREEN_CODEX_USAGE]  = { NAV_JUMP(NAV_SCREEN_ABOUT),        NAV_MOVE(NAV_SCREEN_CLAUDE_USAGE), "codex_usage"  },
+    [NAV_SCREEN_CLAUDE_USAGE] = { NAV_JUMP(NAV_SCREEN_CODEX_USAGE),  NAV_MOVE(NAV_SCREEN_BALANCE),      "claude_usage" },
+    [NAV_SCREEN_BALANCE]      = { NAV_JUMP(NAV_SCREEN_CLAUDE_USAGE), NAV_JUMP(NAV_SCREEN_ABOUT),        "balance"      },
 };
 
 

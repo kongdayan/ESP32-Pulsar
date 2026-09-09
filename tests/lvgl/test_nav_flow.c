@@ -26,7 +26,9 @@ static const nav_entry_t k_entries[] = {
     { NAV_SCREEN_ABOUT,       screen_about_get_ptr,       screen_about_init       },
     { NAV_SCREEN_AGENT,       screen_agent_get_ptr,       screen_agent_init       },
     { NAV_SCREEN_MODEL3D,     screen_3dmodel_get_ptr,     screen_3dmodel_init     },
-    { NAV_SCREEN_CODEX_USAGE, screen_codex_usage_get_ptr, screen_codex_usage_init },
+    { NAV_SCREEN_CODEX_USAGE,  screen_codex_usage_get_ptr,  screen_codex_usage_init  },
+    { NAV_SCREEN_CLAUDE_USAGE, screen_claude_usage_get_ptr, screen_claude_usage_init },
+    { NAV_SCREEN_BALANCE,      screen_balance_get_ptr,      screen_balance_init      },
 };
 
 #define ENTRY_COUNT ((int)(sizeof(k_entries) / sizeof(k_entries[0])))
@@ -60,7 +62,7 @@ static lv_obj_t *obtain(nav_screen_id_t id)
     return *slot;
 }
 
-/* 8 屏同时存在会超出 48KB 的 LVGL 内存池，每个用例结束都彻底回收。
+/* 10 屏同时存在会超出 48KB 的 LVGL 内存池，每个用例结束都彻底回收。
  * 注意：不能删除"当前活动屏"，否则 lv_disp 会留下悬空指针，
  * 所以下载之前先把显示切到一张常驻的中转屏上。 */
 static lv_obj_t *holding_screen(void)

@@ -23,6 +23,7 @@ MT_TEST(test_usage_defaults)
     CHECK_EQ(d.current_resets_in, 0);
     CHECK_EQ(d.weekly_resets_in, 0);
     CHECK_EQ(d.weekly_reset_label[0], '\0');
+    CHECK_EQ((int)d.provider, (int)USAGE_PROVIDER_CODEX);
     CHECK_EQ((int)d.plan, (int)USAGE_PLAN_UNKNOWN);
     CHECK_FALSE(d.has_credits);
     CHECK_FALSE(d.unlimited);
@@ -34,24 +35,93 @@ MT_TEST(test_usage_store_roundtrip)
 {
     usage_store_reset();
     usage_data_t got;
-    CHECK_TRUE(usage_store_get(&got));
+    CHECK_TRUE(usage_store_get(USAGE_PROVIDER_CODEX, &got));
     CHECK_FALSE(got.valid);
 
     usage_data_t d;
     usage_data_defaults(&d);
+    d.provider = USAGE_PROVIDER_CODEX;
     d.current_used_pct = 27;
     d.weekly_used_pct = 73;
     d.valid = true;
     usage_store_set(&d);
 
-    CHECK_TRUE(usage_store_get(&got));
+    CHECK_TRUE(usage_store_get(USAGE_PROVIDER_CODEX, &got));
     CHECK_EQ(got.current_used_pct, 27);
     CHECK_EQ(got.weekly_used_pct, 73);
     CHECK_TRUE(got.valid);
 
     usage_store_reset();
-    CHECK_TRUE(usage_store_get(&got));
+    CHECK_TRUE(usage_store_get(USAGE_PROVIDER_CODEX, &got));
     CHECK_FALSE(got.valid);
+}
+
+MT_TEST(test_usage_store_isolates_providers)
+{
+    usage_store_reset();
+
+    usage_data_t codex;
+    usage_data_defaults(&codex);
+    codex.provider = USAGE_PROVIDER_CODEX;
+    codex.current_used_pct = 11;
+    codex.valid = true;
+    usage_store_set(&codex);
+
+    usage_data_t claude;
+    usage_data_defaults(&claude);
+    claude.provider = USAGE_PROVIDER_CLAUDE;
+    claude.current_used_pct = 22;
+    claude.valid = true;
+    usage_store_set(&claude);
+
+    usage_data_t got;
+    CHECK_TRUE(usage_store_get(USAGE_PROVIDER_CODEX, &got));
+    CHECK_EQ(got.current_used_pct, 11);
+    CHECK_TRUE(usage_store_get(USAGE_PROVIDER_CLAUDE, &got));
+    CHECK_EQ(got.current_used_pct, 22);
+
+    /* 非法 provider 不崩、不命中 */
+    CHECK_FALSE(usage_store_get(USAGE_PROVIDER_COUNT, &got));
+    CHECK_FALSE(usage_store_get((usage_provider_t)-1, &got));
+
+    usage_store_reset();
+}
+
+MT_TEST(test_usage_provider_table)
+{
+    CHECK(usage_provider_is_valid(USAGE_PROVIDER_CODEX));
+    CHECK(usage_provider_is_valid(USAGE_PROVIDER_CLAUDE));
+    CHECK(usage_provider_is_valid(USAGE_PROVIDER_NVIDIA));
+    CHECK(usage_provider_is_valid(USAGE_PROVIDER_AMD));
+    CHECK(usage_provider_is_valid(USAGE_PROVIDER_GLM));
+    CHECK_FALSE(usage_provider_is_valid(USAGE_PROVIDER_COUNT));
+    CHECK_FALSE(usage_provider_is_valid((usage_provider_t)-1));
+
+    CHECK_STR_EQ(usage_provider_key(USAGE_PROVIDER_CODEX), "codex");
+    CHECK_STR_EQ(usage_provider_title(USAGE_PROVIDER_CLAUDE), "CLAUDE");
+    CHECK_STR_EQ(usage_provider_key(USAGE_PROVIDER_COUNT), "unknown");
+    CHECK_STR_EQ(usage_provider_title((usage_provider_t)-5), "?");
+
+    for (int p = 0; p < USAGE_PROVIDER_COUNT; p++) {
+        CHECK(usage_providers[p].key != NULL);
+        CHECK(usage_providers[p].title != NULL);
+        CHECK(usage_providers[p].key[0] != '\0');
+    }
+}
+
+MT_TEST(test_usage_parse_provider_field)
+{
+    usage_data_t d;
+    CHECK_TRUE(usage_parse_json("{\"p\":1,\"cu\":10,\"wu\":20}", &d));
+    CHECK_EQ((int)d.provider, (int)USAGE_PROVIDER_CLAUDE);
+
+    /* 缺省 → Codex（向后兼容） */
+    CHECK_TRUE(usage_parse_json("{\"cu\":10,\"wu\":20}", &d));
+    CHECK_EQ((int)d.provider, (int)USAGE_PROVIDER_CODEX);
+
+    /* 越界 provider 忽略，保持默认 */
+    CHECK_TRUE(usage_parse_json("{\"p\":99,\"cu\":10,\"wu\":20}", &d));
+    CHECK_EQ((int)d.provider, (int)USAGE_PROVIDER_CODEX);
 }
 
 /* ── JSON 解析 ───────────────────────────────────────────────────────────── */

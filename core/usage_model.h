@@ -1,10 +1,15 @@
 /*
- * usage_model.h — Codex 用量数据的运行时模型（纯逻辑，不依赖 LVGL / Arduino / HAL）。
+ * usage_model.h — 用量数据的运行时模型（纯逻辑，不依赖 LVGL / Arduino / HAL）。
  *
- * 数据来源见 client/pulsar_ble_client.py：电脑端从 Codex 后端取用量，经 BLE 写入固件。
- * 这里只负责「怎么存 / 怎么解析 / 怎么格式化」，不负责怎么收（收在 hal/ble_usage.cpp）。
+ * 这是一个 **provider 无关** 的用量模型：Codex、Claude、NVIDIA、AMD、GLM……
+ * 都归一到同一组字段（当前窗口 / 周窗口的已用百分比 + 重置时间），
+ * 屏幕侧只认 provider id + usage_data_t，不再为每个服务写一套逻辑。
+ *
+ * 数据来源：电脑端 client/pulsar_ble_client.py 从各服务取数，经 BLE 写入固件
+ * （hal/ble_usage.cpp 的用量特征值）。JSON 里用 "p" 指定 provider。
  *
  * JSON 键（客户端与固件共用，改动需两端同步）：
+ *   p   provider id               见 usage_provider_t（缺省 0 = Codex，向后兼容）
  *   cu  current used percent      0..100
  *   ci  current resets in         seconds（接收时刻的剩余秒数）
  *   wu  weekly used percent       0..100
@@ -32,12 +37,15 @@ extern "C" {
 #define USAGE_KEY_MAX          8
 #define USAGE_LABEL_MAX        24
 #define USAGE_RESET_TEXT_MAX   40
+#define USAGE_TITLE_MAX        12
+#define USAGE_PROVIDER_KEY_MAX 12
 
 #define USAGE_SEC_PER_MINUTE   60
 #define USAGE_SEC_PER_HOUR     (60 * USAGE_SEC_PER_MINUTE)
 #define USAGE_SEC_PER_DAY      (24 * USAGE_SEC_PER_HOUR)
 
 /* 解析用 JSON 键 */
+#define USAGE_KEY_PROVIDER      "p"
 #define USAGE_KEY_CURRENT_PCT   "cu"
 #define USAGE_KEY_CURRENT_IN    "ci"
 #define USAGE_KEY_WEEKLY_PCT    "wu"
@@ -47,6 +55,29 @@ extern "C" {
 #define USAGE_KEY_CREDITS       "cc"
 #define USAGE_KEY_UNLIMITED     "un"
 #define USAGE_KEY_LIMIT_REACHED "rl"
+
+/* ── provider ────────────────────────────────────────────────────────────── */
+/* 加新服务只改这里：补一个枚举值 + 在 usage_model.c 的表里补一行。 */
+typedef enum {
+    USAGE_PROVIDER_CODEX = 0,
+    USAGE_PROVIDER_CLAUDE,
+    USAGE_PROVIDER_NVIDIA,
+    USAGE_PROVIDER_AMD,
+    USAGE_PROVIDER_GLM,
+    USAGE_PROVIDER_COUNT
+} usage_provider_t;
+
+typedef struct {
+    const char *key;      /* 机器名："codex" */
+    const char *title;    /* 屏幕标题："CODEX" */
+    uint32_t    accent;   /* 该 provider 的强调色（0xRRGGBB，屏幕可选） */
+} usage_provider_info_t;
+
+extern const usage_provider_info_t usage_providers[USAGE_PROVIDER_COUNT];
+
+bool        usage_provider_is_valid(usage_provider_t p);
+const char *usage_provider_key(usage_provider_t p);    /* 非法返回 "unknown" */
+const char *usage_provider_title(usage_provider_t p);  /* 非法返回 "?" */
 
 typedef enum {
     USAGE_PLAN_UNKNOWN = 0,
@@ -60,6 +91,7 @@ typedef enum {
 } usage_plan_t;
 
 typedef struct {
+    usage_provider_t provider;                     /* 该数据属于哪个服务 */
     int          current_used_pct;                 /* 0..100 */
     int          weekly_used_pct;                  /* 0..100 */
     int          current_resets_in;                /* 秒（接收时刻） */
@@ -73,10 +105,11 @@ typedef struct {
     uint32_t     rx_ms;                            /* 接收时刻（写入方填 monotonic ms） */
 } usage_data_t;
 
-/* ── 共享存储（单写多读，seqlock；BLE 任务写，UI 主循环读） ───────────────── */
-void usage_store_set(const usage_data_t *d);
-bool usage_store_get(usage_data_t *out);   /* 读到撕裂中的快照时返回 false */
-void usage_store_reset(void);
+/* ── 共享存储（每个 provider 一个槽；单写多读 seqlock） ───────────────────── */
+void usage_store_set(const usage_data_t *d);                  /* 用 d->provider 选槽 */
+bool usage_store_get(usage_provider_t p, usage_data_t *out);  /* 读到撕裂快照返回 false */
+void usage_store_reset(void);                                 /* 清空所有 provider */
+void usage_store_reset_provider(usage_provider_t p);
 
 /* ── 解析：扁平 JSON（键见文件头） ────────────────────────────────────────── */
 void usage_data_defaults(usage_data_t *d);

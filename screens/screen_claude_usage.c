@@ -1,5 +1,5 @@
 /*
- * screen_codex_usage.c — Codex 用量表盘。
+ * screen_claude_usage.c — Claude 用量表盘。
  * 绘制全部在 provider 无关的 usage_face.c；本文件只绑定 provider + 刷新回调。
  */
 #include "ui.h"
@@ -21,9 +21,9 @@ static const ui_timer_binding_t k_binding = {
     .handle = &face.timer,
 };
 
-void screen_codex_usage_init(void)
+void screen_claude_usage_init(void)
 {
-    usage_face_init(&face, USAGE_PROVIDER_CODEX, NAV_SCREEN_CODEX_USAGE, &k_binding);
+    usage_face_init(&face, USAGE_PROVIDER_CLAUDE, NAV_SCREEN_CLAUDE_USAGE, &k_binding);
 }
 
-lv_obj_t **screen_codex_usage_get_ptr(void) { return usage_face_ptr(&face); }
+lv_obj_t **screen_claude_usage_get_ptr(void) { return usage_face_ptr(&face); }

@@ -1,9 +1,9 @@
 /*
- * codex_usage_layout.h — Codex 用量 Watch Face 的视图常量。
- * 点阵字形、宽度计算、进度/电池映射在 core/watchface.h。
+ * usage_face_layout.h — 用量表盘（provider 无关）的视图常量。
+ * 数据来自 core/usage_model（BLE 写入），这里只放几何/文案/字体。
  */
-#ifndef SCREENS_CODEX_USAGE_LAYOUT_H
-#define SCREENS_CODEX_USAGE_LAYOUT_H
+#ifndef SCREENS_USAGE_FACE_LAYOUT_H
+#define SCREENS_USAGE_FACE_LAYOUT_H
 
 #include "app_config.h"
 #include "ui_theme.h"
@@ -17,7 +17,7 @@
 #define WF_TEXT_OFFLINE        "NO DATA"
 
 /* ── 文本内容 ─────────────────────────────────────────────────────────────── */
-#define WF_TEXT_CODEX          "CODEX"
+/* 标题由 usage_provider_title(provider) 提供，不再写死 CODEX */
 #define WF_TEXT_CURRENT        "CURRENT"
 #define WF_TEXT_WEEKLY         "WEEKLY"
 #define WF_TEXT_PERCENT        "%"
@@ -156,4 +156,4 @@ static const int16_t k_wf_mark_dots[WF_MARK_DOT_COUNT][2] = {
 #define WF_DIVIDER_OPA_LIGHT   LV_OPA_40
 #define WF_PROGRESS_IDLE_OPA   LV_OPA_60
 
-#endif /* SCREENS_CODEX_USAGE_LAYOUT_H */
+#endif /* SCREENS_USAGE_FACE_LAYOUT_H */

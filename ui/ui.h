@@ -20,6 +20,8 @@ void screen_about_init(void);
 void screen_agent_init(void);
 void screen_3dmodel_init(void);
 void screen_codex_usage_init(void);
+void screen_claude_usage_init(void);
+void screen_balance_init(void);
 
 lv_obj_t **screen_dashboard_get_ptr(void);
 lv_obj_t **screen_info_get_ptr(void);
@@ -29,6 +31,8 @@ lv_obj_t **screen_about_get_ptr(void);
 lv_obj_t **screen_agent_get_ptr(void);
 lv_obj_t **screen_3dmodel_get_ptr(void);
 lv_obj_t **screen_codex_usage_get_ptr(void);
+lv_obj_t **screen_claude_usage_get_ptr(void);
+lv_obj_t **screen_balance_get_ptr(void);
 
 void ui_init(void);
 

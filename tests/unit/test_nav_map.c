@@ -8,6 +8,8 @@ MT_TEST(test_nav_names_and_validity)
 {
     CHECK(nav_screen_is_valid(NAV_SCREEN_DASHBOARD));
     CHECK(nav_screen_is_valid(NAV_SCREEN_CODEX_USAGE));
+    CHECK(nav_screen_is_valid(NAV_SCREEN_CLAUDE_USAGE));
+    CHECK(nav_screen_is_valid(NAV_SCREEN_BALANCE));
     CHECK_FALSE(nav_screen_is_valid(NAV_SCREEN_COUNT));
     CHECK_FALSE(nav_screen_is_valid((nav_screen_id_t)-1));
     CHECK_STR_EQ(nav_screen_name(NAV_SCREEN_DASHBOARD), "dashboard");
@@ -60,8 +62,8 @@ MT_TEST(test_nav_back_chain)
     CHECK_EQ(step.target, NAV_SCREEN_CODEX_USAGE);
 }
 
-/* 表盘页左右滑都回到关于页，且都是无动画 */
-MT_TEST(test_nav_codex_usage_is_a_dead_end)
+/* codex：左滑回关于页（无动画），右滑进 Claude 用量屏（位移动画） */
+MT_TEST(test_nav_codex_usage_links)
 {
     nav_step_t left;
     nav_step_t right;
@@ -69,6 +71,34 @@ MT_TEST(test_nav_codex_usage_is_a_dead_end)
     CHECK(nav_map_step(NAV_SCREEN_CODEX_USAGE, NAV_DIR_LEFT, &left));
     CHECK(nav_map_step(NAV_SCREEN_CODEX_USAGE, NAV_DIR_RIGHT, &right));
     CHECK_EQ(left.target, NAV_SCREEN_ABOUT);
+    CHECK_EQ(left.anim, NAV_ANIM_NONE);
+    CHECK_EQ(right.target, NAV_SCREEN_CLAUDE_USAGE);
+    CHECK_EQ(right.anim, NAV_ANIM_MOVE);
+}
+
+/* Claude 用量屏：左滑回 codex（无动画），右滑进余额屏（位移动画） */
+MT_TEST(test_nav_claude_usage_links)
+{
+    nav_step_t left;
+    nav_step_t right;
+
+    CHECK(nav_map_step(NAV_SCREEN_CLAUDE_USAGE, NAV_DIR_LEFT, &left));
+    CHECK(nav_map_step(NAV_SCREEN_CLAUDE_USAGE, NAV_DIR_RIGHT, &right));
+    CHECK_EQ(left.target, NAV_SCREEN_CODEX_USAGE);
+    CHECK_EQ(left.anim, NAV_ANIM_NONE);
+    CHECK_EQ(right.target, NAV_SCREEN_BALANCE);
+    CHECK_EQ(right.anim, NAV_ANIM_MOVE);
+}
+
+/* 余额屏：左右都无动画跳转 */
+MT_TEST(test_nav_balance_links)
+{
+    nav_step_t left;
+    nav_step_t right;
+
+    CHECK(nav_map_step(NAV_SCREEN_BALANCE, NAV_DIR_LEFT, &left));
+    CHECK(nav_map_step(NAV_SCREEN_BALANCE, NAV_DIR_RIGHT, &right));
+    CHECK_EQ(left.target, NAV_SCREEN_CLAUDE_USAGE);
     CHECK_EQ(right.target, NAV_SCREEN_ABOUT);
     CHECK_EQ(left.anim, NAV_ANIM_NONE);
     CHECK_EQ(right.anim, NAV_ANIM_NONE);

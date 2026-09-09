@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #include "app_config.h"
-#include "codex_usage_layout.h"
+#include "usage_face_layout.h"
 #include "esp_heap_caps.h"
 #include "lv_host.h"
 #include "sd_card.h"

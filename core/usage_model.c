@@ -1,5 +1,5 @@
 /*
- * usage_model.c — 见 usage_model.h。全部是纯函数 + 一个 seqlock 单例存储。
+ * usage_model.c — 见 usage_model.h。纯函数 + 每个 provider 一个 seqlock 槽。
  */
 #include "usage_model.h"
 
@@ -17,48 +17,86 @@
 #define USAGE_TEXT_RESET_IN     "Resets in %dd %dh"
 #define USAGE_TEXT_RESET_CLOCK  "Resets in %02d:%02d"
 #define USAGE_TEXT_UNKNOWN_PLAN "?"
+#define USAGE_TEXT_UNKNOWN_PROV "unknown"
 
-/* ── 共享存储（单写多读 seqlock：BLE 任务写、UI 主循环读） ────────────────── */
+/* ── provider 表（加新服务：补枚举 + 这里补一行） ─────────────────────────── */
+const usage_provider_info_t usage_providers[USAGE_PROVIDER_COUNT] = {
+    [USAGE_PROVIDER_CODEX]  = { "codex",  "CODEX",  0x1F7AFFu },
+    [USAGE_PROVIDER_CLAUDE] = { "claude", "CLAUDE", 0xD97757u },
+    [USAGE_PROVIDER_NVIDIA] = { "nvidia", "NVIDIA", 0x76B900u },
+    [USAGE_PROVIDER_AMD]    = { "amd",    "AMD",    0xED1C24u },
+    [USAGE_PROVIDER_GLM]    = { "glm",    "GLM",    0x2E6BFFu },
+};
 
-static volatile uint32_t s_seq;
-static usage_data_t      s_data;
+bool usage_provider_is_valid(usage_provider_t p)
+{
+    return p >= 0 && p < USAGE_PROVIDER_COUNT;
+}
+
+const char *usage_provider_key(usage_provider_t p)
+{
+    return usage_provider_is_valid(p) ? usage_providers[p].key : USAGE_TEXT_UNKNOWN_PROV;
+}
+
+const char *usage_provider_title(usage_provider_t p)
+{
+    return usage_provider_is_valid(p) ? usage_providers[p].title : USAGE_TEXT_UNKNOWN_PLAN;
+}
+
+/* ── 共享存储（每个 provider 一个 seqlock 槽） ────────────────────────────── */
+
+static volatile uint32_t s_seq[USAGE_PROVIDER_COUNT];
+static usage_data_t      s_slots[USAGE_PROVIDER_COUNT];
 
 void usage_data_defaults(usage_data_t *d)
 {
     if (d == NULL) return;
     memset(d, 0, sizeof(*d));
+    d->provider = USAGE_PROVIDER_CODEX;
     d->plan = USAGE_PLAN_UNKNOWN;
 }
 
 void usage_store_set(const usage_data_t *d)
 {
     if (d == NULL) return;
-    s_seq++;                    /* 奇数 = 写入中 */
+    const usage_provider_t p = usage_provider_is_valid(d->provider)
+                                   ? d->provider
+                                   : USAGE_PROVIDER_CODEX;
+    s_seq[p]++;                 /* 奇数 = 写入中 */
     __sync_synchronize();
-    s_data = *d;
+    s_slots[p] = *d;
     __sync_synchronize();
-    s_seq++;                    /* 偶数 = 完成 */
+    s_seq[p]++;                 /* 偶数 = 完成 */
 }
 
-bool usage_store_get(usage_data_t *out)
+bool usage_store_get(usage_provider_t p, usage_data_t *out)
 {
-    if (out == NULL) return false;
+    if (out == NULL || !usage_provider_is_valid(p)) return false;
     for (int i = 0; i < USAGE_STORE_RETRIES; i++) {
-        const uint32_t s1 = s_seq;
-        if ((s1 & 1u) != 0u) continue;      /* 正在写，重试 */
+        const uint32_t s1 = s_seq[p];
+        if ((s1 & 1u) != 0u) continue;
         __sync_synchronize();
-        *out = s_data;
+        *out = s_slots[p];
         __sync_synchronize();
-        if (s_seq == s1) return true;
+        if (s_seq[p] == s1) return true;
     }
-    return false;                            /* 一直撞上写入，放弃本次 */
+    return false;
+}
+
+void usage_store_reset_provider(usage_provider_t p)
+{
+    if (!usage_provider_is_valid(p)) return;
+    usage_data_t d;
+    usage_data_defaults(&d);
+    d.provider = p;
+    usage_store_set(&d);
 }
 
 void usage_store_reset(void)
 {
-    usage_data_t d;
-    usage_data_defaults(&d);
-    usage_store_set(&d);
+    for (int p = 0; p < USAGE_PROVIDER_COUNT; p++) {
+        usage_store_reset_provider((usage_provider_t)p);
+    }
 }
 
 /* ── 解析 ────────────────────────────────────────────────────────────────── */
@@ -83,7 +121,10 @@ static usage_plan_t plan_from_int(int v)
 
 static void apply_int(usage_data_t *d, const char *key, int v, bool *saw_current, bool *saw_weekly)
 {
-    if (strcmp(key, USAGE_KEY_CURRENT_PCT) == 0) {
+    if (strcmp(key, USAGE_KEY_PROVIDER) == 0) {
+        const usage_provider_t p = (usage_provider_t)v;
+        if (usage_provider_is_valid(p)) d->provider = p;
+    } else if (strcmp(key, USAGE_KEY_CURRENT_PCT) == 0) {
         d->current_used_pct = clamp_pct(v);
         *saw_current = true;
     } else if (strcmp(key, USAGE_KEY_CURRENT_IN) == 0) {
