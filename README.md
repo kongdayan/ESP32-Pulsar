@@ -71,11 +71,13 @@ ESP32-Pulsar/
 │   ├── sd_card.cpp/.h           # SD_MMC mount at /sdcard
 │   └── pincfg.h                 # GPIO pin definitions (and only GPIO pins)
 │
-├── screens/                     # One .c/.h pair per screen, views only
-│   ├── screen_dashboard.c/.h    ├── screen_info.c/.h
-│   ├── screen_image.c/.h        ├── screen_video.c/.h
-│   ├── screen_about.c/.h        ├── screen_agent.c/.h   (Hex-Ball)
-│   ├── screen_3dmodel.c/.h      ├── screen_codex_usage.c/.h
+├── screens/                     # One .c per screen + *_layout.h constants
+│   ├── screen_dashboard.c       ├── screen_info.c
+│   ├── screen_image.c           ├── screen_video.c
+│   ├── screen_about.c           ├── screen_agent.c      (Hex-Ball)
+│   ├── screen_3dmodel.c         ├── screen_codex_usage.c
+│   ├── screen_claude_usage.c    ├── screen_balance.c
+│   ├── usage_face.c             # shared provider-agnostic usage face
 │   └── *_layout.h               # per-screen geometry / colour / text constants
 │
 ├── ui/                          # SquareLine-generated layer — avoid hand edits

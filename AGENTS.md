@@ -131,18 +131,18 @@ ESP32-Pulsar/
 │   ├── sd_card.cpp/.h        ← SD 卡（SDMMC 4-bit）挂载，挂载点由 SD_CARD_MOUNT_POINT 定义
 │   └── ble_usage.cpp/.h      ← BLE GATT server：接收电脑端写入的用量 JSON → core/usage_model
 │
-├── screens/                  ← 每屏一个 .c/.h 对 + 一个 *_layout.h 常量头
-│   ├── screen_dashboard.c/.h + dashboard_layout.h
-│   ├── screen_info.c/.h      + info_layout.h
-│   ├── screen_image.c/.h     + image_layout.h
-│   ├── screen_video.c/.h     + video_layout.h
-│   ├── screen_about.c/.h     + about_layout.h
-│   ├── screen_agent.c/.h     + agent_layout.h       ← Hex-Ball
-│   ├── screen_3dmodel.c/.h   + model3d_layout.h     ← 3D 模型
-│   ├── usage_face.c/.h + usage_face_layout.h          ← 共用用量表盘绘制（provider 无关）
-│   ├── screen_codex_usage.c/.h                        ← Codex 用量（薄封装）
-│   ├── screen_claude_usage.c                          ← Claude 用量（薄封装）
-│   └── screen_balance.c      + balance_layout.h       ← DeepSeek 余额
+├── screens/                  ← 每屏一个 .c + 一个 *_layout.h 常量头（函数声明统一在 ui/ui.h）
+│   ├── screen_dashboard.c    + dashboard_layout.h
+│   ├── screen_info.c         + info_layout.h
+│   ├── screen_image.c        + image_layout.h
+│   ├── screen_video.c        + video_layout.h
+│   ├── screen_about.c        + about_layout.h
+│   ├── screen_agent.c        + agent_layout.h       ← Hex-Ball
+│   ├── screen_3dmodel.c      + model3d_layout.h     ← 3D 模型
+│   ├── usage_face.c/.h       + usage_face_layout.h  ← 共用用量表盘绘制（provider 无关）
+│   ├── screen_codex_usage.c                         ← Codex 用量（薄封装）
+│   ├── screen_claude_usage.c                        ← Claude 用量（薄封装）
+│   └── screen_balance.c      + balance_layout.h     ← DeepSeek 余额
 │
 ├── ui/                       ← LVGL 基础层（SquareLine Studio 生成，尽量不手改）
 │   ├── ui.c / ui.h           ← 主题初始化、开机首屏、全局 screen 声明
@@ -306,13 +306,12 @@ _ui_screen_change(screen_info_get_ptr(), LV_SCR_LOAD_ANIM_MOVE_LEFT,
 1. 在 `core/nav_map.h` 的 `nav_screen_id_t` 里加一个 id（放在 `NAV_SCREEN_COUNT` 之前）。
 2. 在 `core/nav_map.c` 的 `k_nav_table` 里补上该屏的 LEFT/RIGHT 去向与动画类型；
    用**指定初始化器**，行下标即 id。
-3. 在 `screens/` 创建 `screen_foo.c`、`screen_foo.h` 与 `foo_layout.h`：
-   - `.h` 声明 `screen_foo_init()` / `screen_foo_get_ptr()`；
+3. 在 `screens/` 创建 `screen_foo.c` 与 `foo_layout.h`：
    - `.c` 内部维护 `static lv_obj_t *scr = NULL;`，用 `ui_screen_create(NAV_SCREEN_FOO)`
      建根对象，尺寸/颜色/文案全部来自 `foo_layout.h`；
-   - `.c` 里需要 `#include "ui.h"`（拿全局 `screen_*` 声明）+ `"ui_screen.h"` + `"foo_layout.h"`。
-4. 在 `ui/ui.h` 中声明该屏的两个函数，并在 `ui/ui.c` 的全局对象列表里加一行
-   `lv_obj_t *screen_foo = NULL;`。
+   - `.c` 里需要 `#include "ui.h"`（拿 `screen_*` 声明）+ `"ui_screen.h"` + `"foo_layout.h"`。
+4. 在 `ui/ui.h` 中声明该屏的两个函数（`screen_foo_init` / `screen_foo_get_ptr`）；
+   不要再建 `screen_foo.h` —— 声明只放 `ui/ui.h`。
 5. 在 `common/ui_screen.c` 的 `k_screen_refs[]` 中登记（`[NAV_SCREEN_FOO] = {...}`），
    这样导航表才能把它建出来。
 6. 让某个已有屏幕能进入新屏：在该屏的 `*_layout.h` 加坐标/文案常量，在 `.c` 里加按钮，
