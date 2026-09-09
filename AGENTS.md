@@ -230,7 +230,7 @@ ui/       →  SquareLine 生成层，除 ui.c 外不手改
 
 ```
 电脑: client/pulsar_ble_client.py
-  ~/.codex/auth.json → GET chatgpt.com/backend-api/api/codex/usage
+  ~/.codex/auth.json → GET chatgpt.com/backend-api/codex/usage
         │ BLE write（GATT 特征值 0b1e5a11-…）
         ▼
 设备: hal/ble_usage.cpp (onWrite) → core/usage_model.c usage_parse_json()

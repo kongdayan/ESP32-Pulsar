@@ -32,6 +32,21 @@ python3 pulsar_ble_client.py --interval 30
 
 ## 数据格式
 
+接口：`GET https://chatgpt.com/backend-api/codex/usage`（可用环境变量 `PULSAR_USAGE_URL` 覆盖），
+鉴权头 `Authorization: Bearer <access_token>` + `chatgpt-account-id: <account_id>`。
+真实响应关键字段（已实测）：
+
+```json
+{
+  "plan_type": "plus",
+  "rate_limit": {
+    "primary_window":   { "used_percent": 0,  "reset_after_seconds": 18000, "reset_at": 1788942594 },
+    "secondary_window": { "used_percent": 12, "reset_after_seconds": 522940, "reset_at": 1789447533 }
+  },
+  "credits": { "has_credits": false, "unlimited": false, "balance": "0" }
+}
+```
+
 脚本把 Codex 响应压成一行扁平 JSON，写入特征值 `0b1e5a11-…`：
 
 | 键 | 含义 |
@@ -56,7 +71,7 @@ python3 pulsar_ble_client.py --interval 30
 | 现象 | 处理 |
 |---|---|
 | `接口 401` | access_token 过期，先在终端跑一次 `codex` 刷新凭据 |
-| `接口 403` | 后端头校验变化，可试改 `originator` / `User-Agent`（见脚本） |
+| `接口 403` | 被 Cloudflare 限流（短时间内请求太密）。脚本会自动退避重试；也可加大 `--interval` |
 | 扫不到设备 | 确认固件已烧入且上电、串口没有刷屏报错；设备广播名是 `ESP32-Pulsar` |
 | 写入后屏幕仍显示 `NO DATA` | 用 `--dry-run` 看 payload 是否合法；确认 `cu`/`wu` 键存在 |
 | 想换 endpoint | 设环境变量 `PULSAR_USAGE_URL=…` |
