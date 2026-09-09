@@ -48,9 +48,7 @@ BALANCE_CHAR_UUID = "0b1e5a13-7e3d-4f1a-9c2b-1a2b3c4d5e60"
 # ── 与固件 core/usage_model.h 的 usage_provider_t 对齐 ────────────────────────
 PROVIDER_CODEX = 0
 PROVIDER_CLAUDE = 1
-PROVIDER_NVIDIA = 2
-PROVIDER_AMD = 3
-PROVIDER_GLM = 4
+# 2/3/4 预留给 NVIDIA/AMD/GLM（固件 usage_provider_t 已定义，客户端接入时再补）
 
 # ── Codex 后端 ────────────────────────────────────────────────────────────────
 USAGE_URL = os.environ.get(
@@ -120,8 +118,15 @@ def _local_label(epoch_s: int) -> str:
     return f"{dt:%H:%M} on {dt.day} {MONTHS[dt.month - 1]}"
 
 
-def _iso_epoch(iso: str | None) -> int | None:
-    if not iso:
+def _to_int(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iso_epoch(iso) -> int | None:
+    if not isinstance(iso, str) or not iso:
         return None
     try:
         return int(_dt.datetime.fromisoformat(iso).timestamp())
@@ -170,17 +175,17 @@ def _window(rate_limit: dict, *names) -> dict:
 
 
 def _reset_epoch(window: dict, now: int) -> int | None:
-    reset_at = _first(window, "reset_at", "resets_at", "resetsAt")
+    reset_at = _to_int(_first(window, "reset_at", "resets_at", "resetsAt"))
     if reset_at:
-        return int(reset_at)
-    after = _first(window, "reset_after_seconds", "resetAfterSeconds")
-    return now + int(after) if after is not None else None
+        return reset_at
+    after = _to_int(_first(window, "reset_after_seconds", "resetAfterSeconds"))
+    return now + after if after is not None else None
 
 
 def _reset_in(window: dict, now: int) -> int:
-    after = _first(window, "reset_after_seconds", "resetAfterSeconds")
+    after = _to_int(_first(window, "reset_after_seconds", "resetAfterSeconds"))
     if after is not None:
-        return max(0, int(after))
+        return max(0, after)
     epoch = _reset_epoch(window, now)
     return max(0, epoch - now) if epoch is not None else 0
 
@@ -209,7 +214,7 @@ def build_payload(usage: dict) -> tuple[bytes, dict]:
         "un": 1 if credits.get("unlimited") else 0,
         "rl": 1 if _first(rate_limit, "limit_reached", "rate_limit_reached") else 0,
     }
-    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode(), fields
+    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode()
 
 
 # ── Claude ────────────────────────────────────────────────────────────────────
@@ -280,7 +285,7 @@ def build_claude_payload(usage: dict) -> tuple[bytes, dict]:
         "un": 0,
         "rl": 0,
     }
-    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode(), fields
+    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode()
 
 
 # ── DeepSeek ──────────────────────────────────────────────────────────────────
@@ -311,14 +316,14 @@ def build_balance_payload(balance: dict) -> tuple[bytes, dict]:
         "top": _to_cents(info.get("topped_up_balance")),
         "av": 1 if balance.get("is_available") else 0,
     }
-    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode(), fields
+    return json.dumps(fields, separators=(",", ":"), ensure_ascii=True).encode()
 
 
 # ── 一轮：取数 + 推送 ─────────────────────────────────────────────────────────
 
 def _collect(args, token: str, account_id: str):
     """取回所有 payload，各源失败互不影响。返回 (usage列表, 余额, errors)。"""
-    usage_payloads: list[tuple[str, bytes]] = []
+    usage_payloads: list[bytes] = []
     balance_payload: bytes | None = None
     errors: list[ApiError] = []
 
@@ -327,8 +332,8 @@ def _collect(args, token: str, account_id: str):
             usage = fetch_usage(token, account_id)
             if args.print_usage:
                 print(json.dumps(usage, indent=2, ensure_ascii=False))
-            payload, _ = build_payload(usage)
-            usage_payloads.append(("codex", payload))
+            payload = build_payload(usage)
+            usage_payloads.append(payload)
             log(f"usage   codex  ({len(payload):3d}B): {payload.decode()}")
         except ApiError as exc:
             errors.append(exc)
@@ -343,15 +348,15 @@ def _collect(args, token: str, account_id: str):
                 usage = fetch_claude_usage(claude_token)
                 if args.print_claude:
                     print(json.dumps(usage, indent=2, ensure_ascii=False))
-                payload, _ = build_claude_payload(usage)
-                usage_payloads.append(("claude", payload))
+                payload = build_claude_payload(usage)
+                usage_payloads.append(payload)
                 log(f"usage   claude ({len(payload):3d}B): {payload.decode()}")
             except ApiError as exc:
                 errors.append(exc)
                 log(f"Claude 失败（{exc.status}）：{str(exc)[:160]}")
 
     if not args.no_deepseek:
-        key = args.deepseek_key or os.environ.get(DEEPSEEK_KEY_ENV, "")
+        key = os.environ.get(DEEPSEEK_KEY_ENV, "")
         if not key:
             log(f"未设置 {DEEPSEEK_KEY_ENV}，跳过余额")
         else:
@@ -359,7 +364,7 @@ def _collect(args, token: str, account_id: str):
                 balance = fetch_deepseek_balance(key)
                 if args.print_balance:
                     print(json.dumps(balance, indent=2, ensure_ascii=False))
-                balance_payload, _ = build_balance_payload(balance)
+                balance_payload = build_balance_payload(balance)
                 log(f"balance deepseek({len(balance_payload):3d}B): {balance_payload.decode()}")
             except ApiError as exc:
                 errors.append(exc)
@@ -392,7 +397,7 @@ async def run_cycle(args, token: str, account_id: str) -> bool:
 
     log(f"连接 {device.address} …")
     async with BleakClient(device, timeout=args.connect_timeout) as client:
-        for _name, payload in usage_payloads:
+        for payload in usage_payloads:
             await client.write_gatt_char(USAGE_CHAR_UUID, payload, response=True)
         if balance_payload is not None:
             await client.write_gatt_char(BALANCE_CHAR_UUID, balance_payload, response=True)
@@ -404,13 +409,19 @@ async def run_cycle(args, token: str, account_id: str) -> bool:
         except Exception:  # noqa: BLE001 - 状态读不到不影响主流程
             log("写入完成（未读到状态特征值）")
 
-    return not errors
+    # 只要有一条 payload 成功写入就不退避：否则一个源故障会把健康数据源也
+    # 降频到 >90s，固件会周期性回落到“无数据”。
+    return True
 
 
 async def main_async(args) -> int:
     token, account_id = "", ""
     if not args.no_codex:
-        token, account_id = load_codex_tokens()
+        try:
+            token, account_id = load_codex_tokens()
+        except SystemExit as exc:
+            log(f"跳过 Codex：{exc}")
+            args.no_codex = True
 
     log(f"Codex    endpoint: {USAGE_URL}")
     log(f"Claude   endpoint: {CLAUDE_USAGE_URL}")
@@ -443,7 +454,6 @@ def main() -> int:
     parser.add_argument("--no-codex", action="store_true", help="跳过 Codex 用量")
     parser.add_argument("--no-claude", action="store_true", help="跳过 Claude 用量")
     parser.add_argument("--no-deepseek", action="store_true", help="跳过 DeepSeek 余额")
-    parser.add_argument("--deepseek-key", default="", help="覆盖 DEEPSEEK_API_KEY")
     parser.add_argument("--interval", type=float, default=60.0, help="循环间隔秒（默认 60）")
     parser.add_argument("--max-backoff", type=float, default=600.0, help="失败退避上限秒")
     parser.add_argument("--device-name", default=DEVICE_NAME, help="BLE 广播名")
