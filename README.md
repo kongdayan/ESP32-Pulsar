@@ -4,6 +4,10 @@ A multi-purpose **ESP32-S3** display badge: a **ST77916 QSPI 360×360 round disp
 
 ![Build](https://github.com/kongdayan/ESP32-Pulsar/actions/workflows/build.yml/badge.svg)
 
+<p align="center">
+  <img src="test/real1.jpg" alt="ESP32-Pulsar badge running the Codex watch face" width="360">
+</p>
+
 ---
 
 ## Hardware
@@ -118,6 +122,17 @@ ffmpeg -i input.mp4 -vf "scale=360:360,fps=24" -pix_fmt rgb565be -f rawvideo vid
 - Touch and drag near a ring to rotate it
 - Ball passing through a gap scores a point — the ring breaks and respawns at the outer edge, then slowly shrinks inward
 - Ball bouncing off a solid side reflects elastically based on surface normal
+
+---
+
+## Design Preview
+
+圆屏排版方案离线渲染（`make -C tests preview`），几何全部来自 `core/dial_layout.h`，
+不手写绝对坐标。下面是“三层同心环”方案（进度环 + 中心焦点数字）：
+
+<p align="center">
+  <img src="example/dial_preview.png" alt="Dial layout preview: three concentric rings" width="360">
+</p>
 
 ---
 
