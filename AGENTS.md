@@ -39,6 +39,7 @@ ESP32-S3 嵌入式固件项目，使用 **PlatformIO + Arduino + LVGL 8.3**。
 | **覆盖率报告** | `make -C tests coverage` |
 | **覆盖率 HTML** | `make -C tests coverage-html` |
 | **覆盖率门禁（≥90%）** | `make -C tests check-coverage` |
+| **离线预览表盘切割方案** | `make -C tests preview`（产物在 `tests/build/preview/`） |
 
 > **规则 1**：修改任何 `.c` / `.cpp` / `.h` 文件后，必须用 `pio run` 验证编译通过，再提交。
 > **规则 2**：改动 `core/`、`common/`、`screens/`、`ui/`、`main.cpp` 中任何一个 `.c/.cpp`
@@ -116,6 +117,7 @@ ST77916_LVGL_DEMO/
 │   ├── hexball.c/.h          ← Hex-Ball 小游戏的物理/计分/拖拽（含随机数注入）
 │   ├── cube3d.c/.h           ← 3D 立方体投影、命中区、惯性（含可配置 params）
 │   ├── watchface.c/.h        ← 点阵字形、百分比/电量格式化
+│   ├── dial_layout.c/.h      ← 圆屏极坐标切割模型（环带/分格/命中/排版可用性，纯几何）
 │   └── video_source.c/.h     ← TF 卡 RGB565 文件读取状态机（与 LVGL 无关）
 │
 ├── common/                   ← 跨屏公共设施（仍依赖 LVGL）
@@ -142,11 +144,12 @@ ST77916_LVGL_DEMO/
 │   └── ui_img_1539399133.c   ← 嵌入式图片资源（LV_IMG_DECLARE）
 │
 ├── tests/                    ← 主机侧单元测试（详见 tests/README.md）
-│   ├── Makefile              ← make test / coverage / check-coverage / clean
+│   ├── Makefile              ← make test / coverage / check-coverage / preview / clean
 │   ├── framework/minitest.*  ← 零依赖断言框架
 │   ├── unit/                 ← core/、common/ 的纯逻辑用例
 │   ├── lvgl/                 ← 真 LVGL 环境下的渲染/导航/交互用例
 │   ├── support/              ← 替身：hal、Arduino、heap_caps、虚拟屏幕与触摸
+│   ├── preview/              ← 离线渲染表盘切割方案（make preview，非 CI）
 │   ├── reference/            ← 重构前实现的逐字副本，供差分测试比对（不计覆盖率）
 │   └── tools/                ← 覆盖率汇总脚本（CI 门禁用）
 │

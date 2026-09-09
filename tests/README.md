@@ -9,6 +9,7 @@ make -C tests test             # 跑全部用例（可选 RUN=<名字子串> 过
 make -C tests coverage         # 行/函数/分支覆盖率
 make -C tests coverage-html    # tests/build/coverage-html/index.html
 make -C tests check-coverage   # 行覆盖率 < MIN_LINE_COVERAGE(默认90) 时非零退出
+make -C tests preview          # 离线渲染表盘切割方案到 tests/build/preview/*.bmp
 make -C tests clean
 ```
 
@@ -64,9 +65,9 @@ core/*.c  common/*.c  screens/*.c  ui/ui.c  ui/ui_helpers.c  main.cpp
 结果（`make check-coverage` 会打印同一份数字）：
 
 ```
-line     99.53%  (1484/1491)
-function 100.00%  (190/190)
-branch   90.09%   (573/636)
+line     99.58%  (1653/1660)
+function 100.00%  (215/215)
+branch   90.85%   (665/732)
 ```
 
 剩下 7 行未覆盖全部是重构前就存在的死分支：`screen_agent.c` 与 `screen_3dmodel.c`
@@ -74,8 +75,22 @@ branch   90.09%   (573/636)
 （屏幕对象），所以这两段代码在旧版同样收不到事件。`test_agent_screen_keeps_legacy_gesture_quirk`
 把"滑屏不出屏"这个旧版行为钉死，避免以后被无声改掉。
 
-## 加一个用例
+## 表盘切割方案离线预览（非测试）
 
+`tests/preview/preview_dials.c` 用同一套主机侧 LVGL 把几套圆屏排版方案
+（单环进度 / 三层同心环 / 24 小时环 / 周×时双层）渲染成图片，方便先看效果再落代码。
+所有几何都走 `core/dial_layout.h`，不手写绝对坐标：
+
+```bash
+make -C tests preview           # -> tests/build/preview/*.bmp
+make -C tests preview RUN=C     # 只渲染名字含 "C" 的方案
+make -C tests preview-PNG       # 再转 PNG（需要 macOS sips 或 ImageMagick）
+```
+
+它自带 `main()`，单独链接，**不参与覆盖率、不跑在 CI 上**；改动时至少手动跑一次
+`make -C tests preview` 确认能出图。
+
+## 加一个用例
 ```c
 /* tests/unit/test_xxx.c 或 tests/lvgl/test_xxx.c，Makefile 自动 glob */
 #include "minitest.h"

@@ -4,6 +4,7 @@
 #   make coverage    生成 llvm-cov 行/函数覆盖率报告（默认要求 ≥90% 行覆盖）
 #   make coverage-html  输出可视化 HTML 到 build/coverage-html
 #   make check-coverage 覆盖率不达标时以非零码退出（CI 用）
+#   make preview     离线渲染表盘切割方案到 build/preview/*.bmp（非 CI）
 #   make clean       清理 build/
 #
 # 依赖：clang (Apple/LLVM) + xcrun llvm-cov；LVGL 源码来自 PlatformIO 的 libdeps。
@@ -76,7 +77,7 @@ RUNNER := $(BUILD)/run_tests
 # 只跑名字包含该子串的用例：make test RUN=video
 RUN ?=
 
-.PHONY: all test coverage coverage-html coverage-json check-coverage clean gen
+.PHONY: all test coverage coverage-html coverage-json check-coverage preview preview-PNG clean gen
 
 all: test
 
@@ -127,6 +128,12 @@ APP_OBJS   := $(patsubst $(ROOT)/%.c,$(OBJ)/app_%.o,$(APP_C_SRCS)) $(OBJ)/app_ma
 DATA_OBJS  := $(patsubst $(ROOT)/%.c,$(OBJ)/data_%.o,$(APP_DATA_C))
 TEST_OBJS  := $(patsubst %.c,$(OBJ)/test_%.o,$(TEST_C_SRCS)) $(patsubst %.cpp,$(OBJ)/test_%.o,$(TEST_CPP_SRCS))
 
+# 预览程序自带 main()，单独链接（不含 framework/unit/lvgl 用例），也不参与覆盖率
+SUPPORT_SRCS := $(wildcard support/*.c)
+SUPPORT_OBJS := $(patsubst %.c,$(OBJ)/test_%.o,$(SUPPORT_SRCS))
+PREVIEW_OBJ  := $(OBJ)/test_preview/preview_dials.o
+PREVIEW_BIN  := $(BUILD)/preview_dials
+
 $(RUNNER): $(LVGL_OBJS) $(APP_OBJS) $(DATA_OBJS) $(TEST_OBJS)
 	@mkdir -p $(BUILD)
 	$(QUIET_LINK)$(CXX) $(COV_FLAGS) $^ -o $@ -lm
@@ -135,6 +142,31 @@ test: $(RUNNER)
 	@mkdir -p $(BUILD)/sdcard $(BUILD)/prof
 	@rm -f $(BUILD)/prof/*.profraw
 	@LLVM_PROFILE_FILE="$(BUILD)/prof/test-%p.profraw" ./$(RUNNER) $(RUN)
+
+# ── 表盘切割方案离线预览 ────────────────────────────────────────────────────
+$(PREVIEW_OBJ): preview/preview_dials.c | gen
+	@mkdir -p $(dir $@)
+	$(QUIET_CC)$(CC) $(HOST_CFLAGS) -c $< -o $@
+
+$(PREVIEW_BIN): $(LVGL_OBJS) $(APP_OBJS) $(DATA_OBJS) $(SUPPORT_OBJS) $(PREVIEW_OBJ)
+	@mkdir -p $(BUILD)
+	$(QUIET_LINK)$(CXX) $(COV_FLAGS) $^ -o $@ -lm
+
+# 可选名字过滤：make preview RUN=C
+preview: $(PREVIEW_BIN)
+	@mkdir -p $(BUILD)/preview $(BUILD)/prof
+	@LLVM_PROFILE_FILE="$(BUILD)/prof/preview-%p.profraw" ./$(PREVIEW_BIN) $(RUN)
+
+preview-PNG: preview
+	@for f in $(BUILD)/preview/*.bmp; do \
+	    if command -v sips >/dev/null 2>&1; then \
+	        sips -s format png "$$f" --out "$${f%.bmp}.png" >/dev/null; \
+	    elif command -v convert >/dev/null 2>&1; then \
+	        convert "$$f" "$${f%.bmp}.png"; \
+	    else \
+	        echo "需要 macOS sips 或 ImageMagick 才能转 PNG"; break; \
+	    fi; \
+	done
 
 # ── 覆盖率 ──────────────────────────────────────────────────────────────────
 $(BUILD)/coverage.profdata: $(RUNNER)
